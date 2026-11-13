@@ -9,6 +9,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import AuthScreen, { Splash } from './src/AuthScreen';
+import { currentUser, logout } from './src/auth';
 import { UNITS, SCENARIOS, SAMPLES } from './src/data/units';
 import {
   RULES, SENS, SERIES, RULE_COMP, STATUS_TEXT, STATUS_SHORT, buildModel, cleanVision, fmtDate, fmtTs, num, sensorTime, sensorsAt,
@@ -292,9 +294,15 @@ export default function App() {
   const [showAllAttn, setShowAllAttn] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showUnits, setShowUnits] = useState(false);
+  const [user, setUser] = useState(null); // вошедший сотрудник {name, role, login}
+  const [authReady, setAuthReady] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
   const run = useRef(0);
   const scroll = useRef(null);
 
+  useEffect(() => {
+    currentUser().then((r) => { if (r.ok) setUser(r.user); }).catch(() => {}).finally(() => setAuthReady(true));
+  }, []);
   useEffect(() => {
     (async () => {
       setHistory(await load('obh.history', []));
@@ -375,6 +383,7 @@ export default function App() {
     const now = Date.now();
     const entry = {
       unit: unit.id, comp: b.c.id, compName: b.c.name, action, note: note.trim().slice(0, 500), status: b.status,
+      user: user ? { name: user.name, role: user.role, login: user.login } : null,
       findings: b.findings.map((f) => f.label).join('; '), ts: now,
     };
     const key = `${unit.id}__${b.c.id}`;
@@ -387,6 +396,15 @@ export default function App() {
   };
   const closeSheet = () => { setSheet(null); setNote(''); };
   const switchTab = (id) => { setTab(id); scroll.current?.scrollTo({ y: 0, animated: false }); };
+
+  const closeSettings = () => { setShowSettings(false); setConfirmLogout(false); };
+  const doLogout = async () => {
+    await logout();
+    setConfirmLogout(false); setShowSettings(false); setSheet(null); resetPhoto(); setUser(null);
+  };
+
+  if (!authReady) return <Splash />;
+  if (!user) return <AuthScreen onAuth={(u) => { setUser(u); setTab('inspect'); }} />;
 
   if (camMode) {
     return (
@@ -602,6 +620,12 @@ export default function App() {
             <Text style={s.h3}>{h.compName}</Text>
             {!!h.findings && <Text style={s.body2}>{h.findings}</Text>}
             {!!h.note && <Text style={s.body2}><Text style={s.bold}>Заметка: </Text>{h.note}</Text>}
+            {!!(h.user && h.user.name) && (
+              <View style={s.who}>
+                <Ionicons name="person-outline" size={15} color={C.muted} />
+                <Text style={s.small}>{h.user.name}{h.user.role ? `, ${h.user.role}` : ''}</Text>
+              </View>
+            )}
           </View>
         );
       }) : (
@@ -623,7 +647,13 @@ export default function App() {
       <View style={[s.header, { paddingTop: TOP + 10 }]}>
         <View style={s.rowBetween}>
           <View style={{ flex: 1 }}>
-            <Text style={s.appName}>MaintAR <Text style={s.appTag}>· AR-помощник инженера</Text></Text>
+            <View style={s.appRow}>
+              <Text style={s.appName}>MaintAR</Text>
+              <Pressable onPress={() => setShowSettings(true)} style={s.userChip} hitSlop={6}>
+                <Ionicons name="person-circle-outline" size={16} color="#fff" />
+                <Text style={s.userChipText} numberOfLines={1}>{user.name}</Text>
+              </Pressable>
+            </View>
             <Text style={s.unitName} numberOfLines={2}>{unit.name}</Text>
             <Text style={s.unitCode}>{unit.id}{unit.demo ? ' · учебная карточка' : ' · по паспорту'}</Text>
           </View>
@@ -741,14 +771,35 @@ export default function App() {
       </Modal>
 
       {/* настройки */}
-      <Modal visible={showSettings} transparent animationType="slide" onRequestClose={() => setShowSettings(false)} statusBarTranslucent>
+      <Modal visible={showSettings} transparent animationType="slide" onRequestClose={closeSettings} statusBarTranslucent>
         <View style={s.backdrop}>
-          <Pressable style={{ flex: 1 }} onPress={() => setShowSettings(false)} />
+          <Pressable style={{ flex: 1 }} onPress={closeSettings} />
           <View style={[s.sheet, { paddingBottom: BOTTOM + 8 }]}>
             <View style={s.grabber} />
             <View style={s.sheetHead}>
               <Text style={[s.h1, { flex: 1 }]}>Настройки</Text>
-              <Pressable onPress={() => setShowSettings(false)} hitSlop={10} style={s.closeBtn}><Ionicons name="close" size={20} color={C.accent} /><Text style={s.closeText}>Закрыть</Text></Pressable>
+              <Pressable onPress={closeSettings} hitSlop={10} style={s.closeBtn}><Ionicons name="close" size={20} color={C.accent} /><Text style={s.closeText}>Закрыть</Text></Pressable>
+            </View>
+            <View style={s.block}>
+              <Text style={s.blockTitle}>Сотрудник</Text>
+              <View style={[s.rowBetween, { alignItems: 'center' }]}>
+                <Ionicons name="person-circle-outline" size={40} color={C.accent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.h3}>{user.name}</Text>
+                  <Text style={s.small}>{user.role} · логин {user.login}</Text>
+                </View>
+              </View>
+              {confirmLogout ? (
+                <View style={{ gap: 8 }}>
+                  <Text style={s.body}>Выйти из учётной записи? История осмотров останется на телефоне.</Text>
+                  <View style={s.row}>
+                    <Btn title="Выйти" kind="danger" icon="log-out-outline" onPress={doLogout} style={{ flex: 1 }} />
+                    <Btn title="Отмена" onPress={() => setConfirmLogout(false)} style={{ flex: 1 }} />
+                  </View>
+                </View>
+              ) : (
+                <Btn title="Выйти" icon="log-out-outline" onPress={() => setConfirmLogout(true)} />
+              )}
             </View>
             <Text style={s.h3}>Сервис анализа фото</Text>
             <Text style={s.muted}>
@@ -757,7 +808,7 @@ export default function App() {
             <TextInput style={[s.input, { minHeight: 48 }]} value={apiUrl} onChangeText={setApiUrl} autoCapitalize="none" autoCorrect={false}
               keyboardType="url" placeholder="http://адрес-сервера:8000" placeholderTextColor={C.faint} />
             <Text style={s.faint}>{apiUrl.trim() ? 'Адрес задан. Новые фото будут отправляться на анализ.' : 'Адрес не задан. Без него ИИ не сможет проверить ваши фото.'}</Text>
-            <Btn title="Готово" kind="primary" onPress={() => setShowSettings(false)} />
+            <Btn title="Готово" kind="primary" onPress={closeSettings} />
           </View>
         </View>
       </Modal>
@@ -771,7 +822,10 @@ const s = StyleSheet.create({
 
   header: { backgroundColor: C.accent, paddingHorizontal: 16, paddingBottom: 14, gap: 12 },
   appName: { color: '#fff', fontSize: 15, fontWeight: '800', letterSpacing: 0.5 },
-  appTag: { color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '500', letterSpacing: 0 },
+  appRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  userChip: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3, maxWidth: 190 },
+  userChipText: { color: '#fff', fontSize: 12.5, fontWeight: '600' },
+  who: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   unitName: { color: '#fff', fontSize: 20, fontWeight: '700', marginTop: 2 },
   unitCode: { color: 'rgba(255,255,255,0.75)', fontSize: 13, marginTop: 2 },
   headActions: { flexDirection: 'row', gap: 8 },
