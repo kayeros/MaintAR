@@ -1,9 +1,10 @@
 // MaintAR: AR-помощник инженера для диагностики промышленного оборудования.
 // Всё работает на телефоне без сервера: правила, датчики из базы кейса, карточки, ресурс, история.
 // Дефекты на фото определяет сервис анализа (адрес задаётся в настройках). Ручная правка нужна, только если ИИ ошибся.
+// Стили: Tailwind через NativeWind (className). Палитра в src/theme.js, inline style только для значений, вычисляемых на лету.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Dimensions, Image, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Dimensions, Image, Modal, Platform, Pressable, ScrollView, StatusBar, Text, TextInput, View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -11,22 +12,45 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import AuthScreen, { Splash } from './src/AuthScreen';
 import { currentUser, logout } from './src/auth';
+import { colors as C } from './src/theme';
 import { UNITS, SCENARIOS, SAMPLES } from './src/data/units';
 import {
   RULES, SENS, SERIES, RULE_COMP, STATUS_TEXT, STATUS_SHORT, buildModel, cleanVision, fmtDate, fmtTs, num, sensorTime, sensorsAt,
 } from './src/engine';
 
-const C = {
-  bg: '#eef2f5', surface: '#ffffff', sunken: '#e6ecf0', line: '#d5dde3', divider: '#e8edf1',
-  fg: '#12202b', muted: '#5b6b78', faint: '#8a98a3',
-  accent: '#0b5c7a', accentSoft: '#e1eef3',
-  ok: '#1f7a4d', okBg: '#dcefe4', check: '#9a5b00', checkBg: '#fbe9c8', defect: '#b3261e', defectBg: '#f9dcd9',
-};
 const TABS = [['inspect', 'Осмотр', 'clipboard-outline'], ['card', 'Карточка', 'document-text-outline'], ['sensors', 'Датчики', 'pulse-outline'], ['history', 'История', 'time-outline']];
 const ACTIONS = { checked: 'Проверено', defect: 'Дефект', replaced: 'Заменено' };
-const ACTION_STATUS = { checked: 'ok', defect: 'defect', replaced: 'accent' };
+const ACTION_STATUS = { checked: 'ok', defect: 'defect', replaced: 'primary' };
 const SRC_TEXT = { 'камера': 'по фото', 'датчики': 'по датчикам', 'камера + датчики': 'фото и датчики' };
 const RANK = { defect: 2, check: 1, ok: 0 };
+
+// Классы по статусу. Строки написаны целиком, чтобы Tailwind их нашёл при сборке.
+const ST = {
+  ok: { text: 'text-ok', bg: 'bg-ok', soft: 'bg-ok-bg', border: 'border-ok', borderL: 'border-l-ok' },
+  check: { text: 'text-check', bg: 'bg-check', soft: 'bg-check-bg', border: 'border-check', borderL: 'border-l-check' },
+  defect: { text: 'text-defect', bg: 'bg-defect', soft: 'bg-defect-bg', border: 'border-defect', borderL: 'border-l-defect' },
+  primary: { text: 'text-primary', bg: 'bg-primary', soft: 'bg-primary-soft', border: 'border-primary', borderL: 'border-l-primary' },
+};
+const NONE = { text: 'text-muted', bg: 'bg-muted', soft: 'bg-sunken', border: 'border-line', borderL: 'border-l-line' };
+const st = (status) => ST[status] || NONE;
+
+// Типографика.
+const T = {
+  h1: 'text-[21px] font-bold text-fg',
+  h2: 'text-[18px] font-bold text-fg',
+  h3: 'text-[16px] font-semibold text-fg',
+  body: 'text-[15px] leading-[22px] text-fg',
+  body2: 'text-[15px] leading-[21px] text-muted',
+  body2c: 'text-[15px] leading-[21px] text-fg',
+  muted: 'text-[15px] leading-[21px] text-muted',
+  small: 'text-[13px] leading-[18px] text-muted',
+  faint: 'text-[13px] leading-[18px] text-faint',
+  note: 'text-[14px] leading-[20px] text-muted border-l-[3px] border-l-primary pl-2.5',
+  src: 'self-start text-[13px] text-primary bg-primary-soft rounded-md px-2 py-0.5 overflow-hidden',
+};
+const ROW = 'flex-row flex-wrap items-center gap-2';
+const BETWEEN = 'flex-row items-center justify-between gap-2';
+const NUMS = { fontVariant: ['tabular-nums'] };
 
 const TOP = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 50;
 const BOTTOM = (() => {
@@ -48,51 +72,64 @@ const sortFindings = (list) => [...list].sort((a, b) =>
 
 /* ---------- мелкие элементы ---------- */
 function Pill({ status, text, big }) {
+  const c = st(status);
   return (
-    <View style={[s.pill, big && s.pillBig, { backgroundColor: C[status + 'Bg'] || C.sunken }]}>
-      <View style={[s.dot, { backgroundColor: C[status] || C.muted }]} />
-      <Text style={[s.pillText, big && { fontSize: 15 }, { color: C[status] || C.muted }]}>{text || STATUS_SHORT[status]}</Text>
+    <View className={`flex-row items-center gap-1.5 rounded-full ${big ? 'px-3.5 py-2' : 'px-2.5 py-1'} ${c.soft}`}>
+      <View className={`w-2 h-2 rounded-full ${c.bg}`} />
+      <Text className={`font-bold ${big ? 'text-[15px]' : 'text-[13px]'} ${c.text}`}>{text || STATUS_SHORT[status]}</Text>
     </View>
   );
 }
-function Btn({ title, icon, onPress, kind = 'secondary', small, disabled, style }) {
+
+const BTN = {
+  primary: { box: 'bg-primary border-primary min-h-[54px]', text: 'text-white text-[17px]', icon: '#fff' },
+  secondary: { box: 'bg-surface border-line', text: 'text-fg', icon: C.fg },
+  ghost: { box: 'bg-transparent border-transparent', text: 'text-muted', icon: C.muted },
+  danger: { box: 'bg-surface border-defect', text: 'text-defect', icon: C.defect },
+  dark: { box: 'bg-white/15 border-white/35', text: 'text-white', icon: '#fff' },
+};
+function Btn({ title, icon, onPress, kind = 'secondary', small, disabled, className = '' }) {
+  const k = BTN[kind] || BTN.secondary;
   return (
     <Pressable onPress={onPress} disabled={disabled}
-      style={({ pressed }) => [s.btn, s['btn_' + kind], small && s.btnSmall, (disabled || pressed) && { opacity: disabled ? 0.45 : 0.8 }, style]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        {!!icon && <Ionicons name={icon} size={small ? 18 : 22} color={s['btnText_' + kind].color} />}
-        <Text style={[s.btnText, s['btnText_' + kind], small && { fontSize: 14 }]}>{title}</Text>
+      className={`min-h-[48px] px-4 py-2.5 rounded-xl border items-center justify-center active:opacity-80 ${k.box} ${small ? 'min-h-[40px] px-3 py-1.5' : ''} ${disabled ? 'opacity-[0.45]' : ''} ${className}`}>
+      <View className="flex-row items-center gap-2">
+        {!!icon && <Ionicons name={icon} size={small ? 18 : 22} color={k.icon} />}
+        <Text className={`font-semibold text-center ${small ? 'text-[14px]' : 'text-[16px]'} ${k.text}`}>{title}</Text>
       </View>
     </Pressable>
   );
 }
 function Chip({ title, active, onPress }) {
   return (
-    <Pressable onPress={onPress} style={[s.chip, active && { backgroundColor: C.accent, borderColor: C.accent }]}>
-      <Text style={[s.chipText, active && { color: '#fff', fontWeight: '600' }]}>{title}</Text>
+    <Pressable onPress={onPress}
+      className={`border rounded-full px-3.5 py-[9px] active:opacity-80 ${active ? 'bg-primary border-primary' : 'bg-surface border-line'}`}>
+      <Text className={`text-[14px] ${active ? 'text-white font-semibold' : 'text-fg'}`}>{title}</Text>
     </Pressable>
   );
 }
 function Link({ title, onPress }) {
   return (
-    <Pressable onPress={onPress} hitSlop={8} style={{ alignSelf: 'flex-start', paddingVertical: 6 }}>
-      <Text style={s.link}>{title}</Text>
+    <Pressable onPress={onPress} hitSlop={8} className="self-start py-1.5">
+      <Text className="text-[15px] text-primary font-semibold underline">{title}</Text>
     </Pressable>
   );
 }
-const Card = ({ title, right, children, style }) => (
-  <View style={[s.card, style]}>
-    {(title || right) && <View style={s.rowBetween}><Text style={[s.h2, { flex: 1 }]}>{title}</Text>{right}</View>}
+const Card = ({ title, right, children }) => (
+  <View className="bg-surface rounded-[14px] p-4 gap-3 border border-divider">
+    {(title || right) && <View className={BETWEEN}><Text className={`${T.h2} flex-1`}>{title}</Text>{right}</View>}
     {children}
   </View>
 );
 const Step = ({ n, title, hint, right, children }) => (
-  <View style={s.card}>
-    <View style={s.stepHead}>
-      <View style={s.stepNum}><Text style={s.stepNumText}>{n}</Text></View>
-      <View style={{ flex: 1 }}>
-        <Text style={s.h2}>{title}</Text>
-        {!!hint && <Text style={s.small}>{hint}</Text>}
+  <View className="bg-surface rounded-[14px] p-4 gap-3 border border-divider">
+    <View className="flex-row items-center gap-3">
+      <View className="w-[30px] h-[30px] rounded-full bg-primary items-center justify-center">
+        <Text className="text-white font-bold text-[15px]">{n}</Text>
+      </View>
+      <View className="flex-1">
+        <Text className={T.h2}>{title}</Text>
+        {!!hint && <Text className={T.small}>{hint}</Text>}
       </View>
       {right}
     </View>
@@ -100,24 +137,30 @@ const Step = ({ n, title, hint, right, children }) => (
   </View>
 );
 function Item({ status, onPress, children }) {
-  const body = <View style={[s.item, { borderLeftColor: C[status] || C.line }]}>{children}</View>;
-  return onPress ? <Pressable onPress={onPress} style={({ pressed }) => pressed && { opacity: 0.75 }}>{body}</Pressable> : body;
+  const body = (
+    <View className={`border border-divider border-l-4 rounded-xl p-3 gap-2 bg-surface ${st(status).borderL}`}>{children}</View>
+  );
+  return onPress ? <Pressable onPress={onPress} className="active:opacity-75">{body}</Pressable> : body;
 }
 const KV = ({ k, v, last }) => (
-  <View style={[s.kv, !last && s.kvLine]}>
-    <Text style={s.kvK}>{k}</Text><Text style={s.kvV}>{v}</Text>
+  <View className={`flex-row gap-3 py-[9px] ${last ? '' : 'border-b border-divider'}`}>
+    <Text className="flex-1 text-[14px] leading-[20px] text-muted">{k}</Text>
+    <Text className="flex-[1.3] text-[15px] leading-[20px] text-fg text-right">{v}</Text>
   </View>
 );
-const Chevron = () => <Text style={s.chevron}>›</Text>;
+const Chevron = () => <Text className="text-[24px] text-faint ml-0.5 -mt-[3px]">›</Text>;
 
 function ResBar({ res }) {
-  if (res.kind !== 'calc') return <Text style={s.faint}>{res.text}</Text>;
+  if (res.kind !== 'calc') return <Text className={T.faint}>{res.text}</Text>;
+  const c = st(res.status);
   return (
-    <View style={{ gap: 6 }}>
-      <View style={s.bar}><View style={{ width: `${Math.max(2, res.pct)}%`, height: '100%', backgroundColor: C[res.status], borderRadius: 5 }} /></View>
-      <View style={s.rowBetween}>
-        <Text style={s.small}>использовано {num(res.pct, 0)} %</Text>
-        <Text style={[s.small, { color: C[res.status], fontWeight: '600' }]}>{res.text}</Text>
+    <View className="gap-1.5">
+      <View className="h-2.5 rounded-[5px] bg-sunken overflow-hidden">
+        <View className={`h-full rounded-[5px] ${c.bg}`} style={{ width: `${Math.max(2, res.pct)}%` }} />
+      </View>
+      <View className={BETWEEN}>
+        <Text className={T.small}>использовано {num(res.pct, 0)} %</Text>
+        <Text className={`${T.small} font-semibold ${c.text}`}>{res.text}</Text>
       </View>
     </View>
   );
@@ -128,9 +171,9 @@ function PhotoStage({ photo, vis, model, busy, onPick }) {
   const [lw, setW] = useState(0);
   if (!photo) {
     return (
-      <View key="empty" style={[s.stage, s.stageEmpty]}>
-        <Text style={s.stageEmptyTitle}>Фото пока нет</Text>
-        <Text style={[s.muted, { textAlign: 'center' }]}>Снимите узел. ИИ найдёт дефекты и обведёт их рамками.</Text>
+      <View key="empty" className="w-full rounded-xl overflow-hidden p-7 gap-1.5 items-center border-2 border-dashed border-line bg-bg">
+        <Text className="text-[16px] font-bold text-fg">Фото пока нет</Text>
+        <Text className={`${T.muted} text-center`}>Снимите узел. ИИ найдёт дефекты и обведёт их рамками.</Text>
       </View>
     );
   }
@@ -159,32 +202,30 @@ function PhotoStage({ photo, vis, model, busy, onPick }) {
   }
   const LABEL_H = 22;
   return (
-    <View key="photo" style={[s.stage, { aspectRatio: ratio }]} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
-      <Image source={photo.source || { uri: photo.uri }} style={s.photoImg} resizeMode="contain" />
+    <View key="photo" className="w-full bg-sunken rounded-xl overflow-hidden" style={{ aspectRatio: ratio }}
+      onLayout={(e) => setW(e.nativeEvent.layout.width)}>
+      {/* Размеры картинки задаём через style: на вебе className проигрывает встроенным размерам изображения. */}
+      <Image source={photo.source || { uri: photo.uri }} style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%' }} resizeMode="contain" />
       {boxes.map((b) => {
         const inside = b.y * H < LABEL_H + 2; // рамка у верхнего края: подпись внутрь
         const rightSide = b.x > 0.5;          // рамка справа: подпись прижимаем к правому краю рамки
         const maxW = rightSide ? (b.x + b.w) * W - 4 : (1 - b.x) * W - 4;
+        const c = st(b.status);
         return (
           <Pressable key={b.key} onPress={() => onPick(b.comp)} hitSlop={4}
-            style={[s.box, {
-              left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.w * 100}%`, height: `${b.h * 100}%`,
-              borderColor: C[b.status], borderStyle: b.status === 'ok' ? 'dashed' : 'solid',
-            }]}>
-            <View style={[s.boxLabel, {
-              backgroundColor: C[b.status], maxWidth: Math.max(60, maxW),
-              top: inside ? 0 : -LABEL_H - 1,
-              [rightSide ? 'right' : 'left']: -3,
-            }]}>
-              <Text numberOfLines={1} style={s.boxLabelText}>{b.label}</Text>
+            className={`absolute border-[3px] rounded ${c.border} ${b.status === 'ok' ? 'border-dashed' : 'border-solid'}`}
+            style={{ left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.w * 100}%`, height: `${b.h * 100}%` }}>
+            <View className={`absolute h-[22px] justify-center px-1.5 rounded ${c.bg}`}
+              style={{ maxWidth: Math.max(60, maxW), top: inside ? 0 : -LABEL_H - 1, [rightSide ? 'right' : 'left']: -3 }}>
+              <Text numberOfLines={1} className="text-white text-[12px] font-bold">{b.label}</Text>
             </View>
           </Pressable>
         );
       })}
       {busy && (
-        <View style={s.busy}>
+        <View className="absolute inset-0 bg-[#081822]/55 items-center justify-center gap-2.5">
           <ActivityIndicator color="#fff" size="large" />
-          <Text style={s.busyText}>ИИ анализирует фото…</Text>
+          <Text className="text-white text-[16px] font-semibold">ИИ анализирует фото…</Text>
         </View>
       )}
     </View>
@@ -200,17 +241,15 @@ function Spark({ param, rule, idx }) {
   const top = Math.max(rule.alarm * 1.15, Math.max(...seg) * 1.05);
   const H = 64;
   return (
-    <View style={{ height: H, marginTop: 4 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: H, gap: 1 }}>
+    <View className="mt-1" style={{ height: H }}>
+      <View className="flex-row items-end gap-px" style={{ height: H }}>
         {seg.map((v, i) => (
-          <View key={i} style={{
-            flex: 1, height: Math.max(1, (v / top) * H), borderTopLeftRadius: 1, borderTopRightRadius: 1,
-            backgroundColor: v > rule.alarm ? C.defect : v > rule.warn ? C.check : '#7fa9bb',
-          }} />
+          <View key={i} className={`flex-1 rounded-t-[1px] ${v > rule.alarm ? 'bg-defect' : v > rule.warn ? 'bg-check' : 'bg-[#7fa9bb]'}`}
+            style={{ height: Math.max(1, (v / top) * H) }} />
         ))}
       </View>
-      <View style={[s.thresh, { bottom: (rule.warn / top) * H, borderColor: C.check }]} />
-      <View style={[s.thresh, { bottom: (rule.alarm / top) * H, borderColor: C.defect }]} />
+      <View className="absolute left-0 right-0 border-t-[1.5px] border-dashed border-check" style={{ bottom: (rule.warn / top) * H }} />
+      <View className="absolute left-0 right-0 border-t-[1.5px] border-dashed border-defect" style={{ bottom: (rule.alarm / top) * H }} />
     </View>
   );
 }
@@ -224,15 +263,16 @@ function CameraScreen({ mode, hints, onPhoto, onQr, onClose }) {
   const scanned = useRef(false);
   useEffect(() => { if (perm && !perm.granted && perm.canAskAgain) requestPerm(); }, [perm]);
 
-  if (!perm) return <View style={s.camWrap}><ActivityIndicator color="#fff" /></View>;
+  const wrap = 'flex-1 bg-black justify-center items-center';
+  if (!perm) return <View className={wrap}><ActivityIndicator color="#fff" /></View>;
   if (!perm.granted) {
     return (
-      <View style={[s.camWrap, { padding: 24, gap: 12 }]}>
-        <Text style={[s.camText, { textAlign: 'center', marginBottom: 8 }]}>
+      <View className={`${wrap} p-6 gap-3`}>
+        <Text className="text-white text-[15px] text-center mb-2">
           Нет доступа к камере. Разрешите его, чтобы снимать узлы и сканировать QR-коды.
         </Text>
-        <Btn title="Разрешить камеру" kind="primary" onPress={requestPerm} style={{ alignSelf: 'stretch' }} />
-        <Btn title="Назад" onPress={onClose} style={{ alignSelf: 'stretch' }} />
+        <Btn title="Разрешить камеру" kind="primary" onPress={requestPerm} className="self-stretch" />
+        <Btn title="Назад" onPress={onClose} className="self-stretch" />
       </View>
     );
   }
@@ -245,33 +285,73 @@ function CameraScreen({ mode, hints, onPhoto, onQr, onClose }) {
     } catch (e) { setBusy(false); }
   };
   return (
-    <View style={s.camWrap}>
-      <CameraView ref={cam} style={StyleSheet.absoluteFill} facing="back" onCameraReady={() => setReady(true)}
+    <View className={wrap}>
+      <CameraView ref={cam} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} facing="back" onCameraReady={() => setReady(true)}
         barcodeScannerSettings={mode === 'qr' ? { barcodeTypes: ['qr'] } : undefined}
         onBarcodeScanned={mode === 'qr' ? (e) => { if (!scanned.current) { scanned.current = true; onQr(String(e.data || '')); } } : undefined} />
-      {mode === 'qr' && <View style={s.qrFrame} pointerEvents="none" />}
-      <View style={[s.camTop, { paddingTop: TOP + 10 }]}>
-        <Text style={s.camTitle}>{mode === 'qr' ? 'Наведите камеру на QR-код агрегата' : 'Наведите камеру на узел'}</Text>
-        {mode !== 'qr' && hints.length > 0 && <Text style={[s.camText, { opacity: 0.8 }]}>В первую очередь:</Text>}
+      {mode === 'qr' && <View className="w-60 h-60 border-[3px] border-white rounded-[20px]" pointerEvents="none" />}
+      <View className="absolute top-0 left-0 right-0 px-4 pb-3.5 gap-1.5 bg-black/50" style={{ paddingTop: TOP + 10 }}>
+        <Text className="text-white text-[18px] font-bold">{mode === 'qr' ? 'Наведите камеру на QR-код агрегата' : 'Наведите камеру на узел'}</Text>
+        {mode !== 'qr' && hints.length > 0 && <Text className="text-white text-[15px] opacity-80">В первую очередь:</Text>}
         {mode !== 'qr' && hints.map((h) => (
-          <View key={h.id} style={[s.camHint, { borderLeftColor: C[h.status] }]}>
-            <Text style={[s.camText, { fontWeight: '600' }]}>{h.name}</Text>
-            <Text style={[s.camText, { fontSize: 13, opacity: 0.85 }]}>{h.reason}</Text>
+          <View key={h.id} className={`border-l-4 pl-2.5 py-0.5 ${st(h.status).borderL}`}>
+            <Text className="text-white text-[15px] font-semibold">{h.name}</Text>
+            <Text className="text-white text-[13px] opacity-85">{h.reason}</Text>
           </View>
         ))}
       </View>
-      <View style={[s.camBottom, { paddingBottom: BOTTOM + 16 }]}>
-        <Btn title="Назад" kind="dark" onPress={onClose} style={{ width: 96 }} />
+      <View className="absolute bottom-0 left-0 right-0 flex-row items-center justify-between px-5 pt-5 bg-black/50"
+        style={{ paddingBottom: BOTTOM + 16 }}>
+        <Btn title="Назад" kind="dark" onPress={onClose} className="w-24" />
         {mode !== 'qr' ? (
-          <Pressable onPress={shoot} disabled={!ready || busy} style={[s.shutter, (!ready || busy) && { opacity: 0.5 }]}>
-            <View style={s.shutterIn} />
+          <Pressable onPress={shoot} disabled={!ready || busy}
+            className={`w-[76px] h-[76px] rounded-full border-4 border-white items-center justify-center ${!ready || busy ? 'opacity-50' : ''}`}>
+            <View className="w-[58px] h-[58px] rounded-full bg-white" />
           </Pressable>
         ) : <View />}
-        <View style={{ width: 96 }} />
+        <View className="w-24" />
       </View>
     </View>
   );
 }
+
+/* ---------- выезжающее снизу окно ---------- */
+function Sheet({ visible, onClose, title, head, children }) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      <View className="flex-1 bg-[#050c12]/50">
+        <Pressable className="flex-1" onPress={onClose} />
+        {visible && (
+          <View className="bg-surface rounded-t-[20px] px-4 pt-2 gap-3 max-h-[90%]" style={{ paddingBottom: BOTTOM + 8 }}>
+            <View className="self-center w-10 h-[5px] rounded-[3px] bg-line" />
+            <View className="flex-row items-start gap-3">
+              {head || <Text className={`${T.h1} flex-1`}>{title}</Text>}
+              <Pressable onPress={onClose} hitSlop={10}
+                className="min-h-[40px] px-3 flex-row gap-1 rounded-[10px] bg-bg items-center justify-center active:opacity-75">
+                <Ionicons name="close" size={20} color={C.primary} />
+                <Text className="text-[15px] font-semibold text-primary">Закрыть</Text>
+              </Pressable>
+            </View>
+            {children}
+          </View>
+        )}
+      </View>
+    </Modal>
+  );
+}
+const Block = ({ title, children }) => (
+  <View className="bg-bg rounded-xl p-3 gap-1.5">
+    <Text className="text-[13px] font-bold text-primary tracking-[0.5px] uppercase">{title}</Text>
+    {children}
+  </View>
+);
+const Todo = ({ text }) => (
+  <View className="bg-bg rounded-[10px] p-2.5 gap-0.5">
+    <Text className="text-[13px] font-bold text-primary">Что делать</Text>
+    <Text className={T.body2c}>{text}</Text>
+  </View>
+);
+const INPUT = 'border border-line rounded-xl p-3 text-[15px] text-fg bg-surface';
 
 /* ---------- приложение ---------- */
 export default function App() {
@@ -418,6 +498,7 @@ export default function App() {
   const attnShown = showAllAttn ? attention : attention.slice(0, 3);
   const top = findings[0];
   const nBoxes = countBoxes(vis);
+  const ov = st(model.overall);
   const inspect = (
     <>
       <Step n="1" title="Что проверить" hint={attention.length ? 'По датчикам и ресурсу узлов' : null}>
@@ -425,92 +506,81 @@ export default function App() {
           <>
             {attnShown.map((b) => (
               <Item key={b.c.id} status={b.status} onPress={() => setSheet(b.c.id)}>
-                <View style={s.rowBetween}>
-                  <Text style={[s.h3, { flex: 1 }]}>{b.c.name}</Text>
+                <View className={BETWEEN}>
+                  <Text className={`${T.h3} flex-1`}>{b.c.name}</Text>
                   <Pill status={b.status} /><Chevron />
                 </View>
-                <Text style={s.body2}>{b.findings[0] ? b.findings[0].label : b.res.text}</Text>
+                <Text className={T.body2}>{b.findings[0] ? b.findings[0].label : b.res.text}</Text>
               </Item>
             ))}
             {attention.length > 3 && (
               <Link title={showAllAttn ? 'Свернуть' : `Показать все (${attention.length})`} onPress={() => setShowAllAttn(!showAllAttn)} />
             )}
           </>
-        ) : <Text style={s.muted}>По датчикам и ресурсу замечаний нет. Сделайте обзорное фото агрегата.</Text>}
+        ) : <Text className={T.muted}>По датчикам и ресурсу замечаний нет. Сделайте обзорное фото агрегата.</Text>}
       </Step>
 
       <Step n="2" title="Снимите узел" hint="ИИ сам найдёт дефекты на снимке">
         <PhotoStage photo={photo} vis={vis} model={model} busy={busy} onPick={setSheet} />
-        {nBoxes > 0 && !busy && <Text style={s.hint}>Нажмите на рамку, чтобы открыть узел</Text>}
+        {nBoxes > 0 && !busy && <Text className="text-[14px] text-primary text-center">Нажмите на рамку, чтобы открыть узел</Text>}
         <Btn title={photo ? 'Снять новое фото' : 'Снять фото'} kind="primary" icon="camera-outline" onPress={() => setCamMode('photo')} />
-        <View style={s.row}>
-          <Btn title="Из галереи" icon="images-outline" onPress={pickFromGallery} style={{ flex: 1 }} />
-          {photo && <Btn title="Убрать фото" kind="ghost" onPress={resetPhoto} style={{ flex: 1 }} />}
+        <View className={ROW}>
+          <Btn title="Из галереи" icon="images-outline" onPress={pickFromGallery} className="flex-1" />
+          {photo && <Btn title="Убрать фото" kind="ghost" onPress={resetPhoto} className="flex-1" />}
         </View>
-        {ai && ai.kind === 'noapi' && (
-          <View style={[s.notice, { backgroundColor: C.checkBg }]}>
-            <Text style={[s.body2, { color: C.fg }]}>{ai.text}</Text>
-            <Btn small title="Открыть настройки" onPress={() => setShowSettings(true)} style={{ alignSelf: 'flex-start' }} />
+        {ai && (ai.kind === 'noapi' || ai.kind === 'error') && (
+          <View className={`rounded-xl p-3 gap-2.5 ${ai.kind === 'noapi' ? 'bg-check-bg' : 'bg-defect-bg'}`}>
+            <Text className={T.body2c}>{ai.text}</Text>
+            <Btn small title="Открыть настройки" onPress={() => setShowSettings(true)} className="self-start" />
           </View>
         )}
-        {ai && ai.kind === 'error' && (
-          <View style={[s.notice, { backgroundColor: C.defectBg }]}>
-            <Text style={[s.body2, { color: C.fg }]}>{ai.text}</Text>
-            <Btn small title="Открыть настройки" onPress={() => setShowSettings(true)} style={{ alignSelf: 'flex-start' }} />
-          </View>
-        )}
-        {ai && ai.kind === 'info' && <Text style={s.note}>{ai.text}</Text>}
-        <View style={s.samples}>
-          <Text style={s.small}>Нет оборудования рядом? Откройте пример:</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+        {ai && ai.kind === 'info' && <Text className={T.note}>{ai.text}</Text>}
+        <View className="gap-2 border-t border-divider pt-3">
+          <Text className={T.small}>Нет оборудования рядом? Откройте пример:</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
             {SAMPLES.map((x) => <Chip key={x.key} title={x.label} onPress={() => pickSample(x)} />)}
           </ScrollView>
         </View>
       </Step>
 
       <Step n="3" title="Результат">
-        <View style={[s.banner, { backgroundColor: C[model.overall + 'Bg'], borderColor: C[model.overall] }]}>
-          <View style={s.rowBetween}>
-            <Text style={[s.bannerTitle, { color: C[model.overall], flex: 1 }]}>{STATUS_TEXT[model.overall]}</Text>
-          </View>
-          <Text style={s.bannerText}>
-            <Text style={{ fontWeight: '700' }}>В первую очередь: </Text>
+        <View className={`rounded-xl p-3.5 gap-2 border-l-[5px] ${ov.soft} ${ov.borderL}`}>
+          <Text className={`text-[18px] font-bold ${ov.text}`}>{STATUS_TEXT[model.overall]}</Text>
+          <Text className={T.body2c}>
+            <Text className="font-bold">В первую очередь: </Text>
             {top ? top.action : 'Замечаний нет. Продолжайте плановый обход.'}
           </Text>
         </View>
-        <Text style={s.small}>
+        <Text className={T.small}>
           {unit.sensors ? `Датчики: запись от ${fmtTs(sensorTime(idx))}` : 'Датчики к агрегату не подключены, вывод только по фото и ресурсу.'}
         </Text>
         {findings.map((f) => (
           <Item key={f.id} status={f.status} onPress={() => setSheet(f.comp)}>
-            <View style={s.rowBetween}>
-              <Text style={[s.h3, { flex: 1 }]}>{f.label}</Text>
+            <View className={BETWEEN}>
+              <Text className={`${T.h3} flex-1`}>{f.label}</Text>
               <Pill status={f.status} />
             </View>
-            <View style={s.row}>
-              <Text style={s.src}>{SRC_TEXT[f.src] || f.src}</Text>
-              {f.confidence != null && <Text style={s.src}>уверенность {Math.round(f.confidence * 100)} %</Text>}
+            <View className={ROW}>
+              <Text className={T.src}>{SRC_TEXT[f.src] || f.src}</Text>
+              {f.confidence != null && <Text className={T.src}>уверенность {Math.round(f.confidence * 100)} %</Text>}
             </View>
-            <Text style={s.body2}>{f.detail}</Text>
-            <View style={s.todo}>
-              <Text style={s.todoTitle}>Что делать</Text>
-              <Text style={s.body2c}>{f.action}</Text>
-            </View>
-            <Text style={s.code}>Правило {f.id}</Text>
+            <Text className={T.body2}>{f.detail}</Text>
+            <Todo text={f.action} />
+            <Text className="text-[11.5px] text-faint text-right">Правило {f.id}</Text>
           </Item>
         ))}
-        <Text style={s.faint}>Предварительный осмотр. Если видимых дефектов нет, это ещё не подтверждает исправность оборудования.</Text>
+        <Text className={T.faint}>Предварительный осмотр. Если видимых дефектов нет, это ещё не подтверждает исправность оборудования.</Text>
         <Link title={showManual ? 'Скрыть ручную правку' : 'ИИ ошибся? Исправить вручную'} onPress={() => setShowManual(!showManual)} />
         {showManual && (
-          <View style={{ gap: 12 }}>
-            <Text style={s.small}>Отметьте дефекты, которые видите сами. Отметку можно снять повторным нажатием.</Text>
+          <View className="gap-3">
+            <Text className={T.small}>Отметьте дефекты, которые видите сами. Отметку можно снять повторным нажатием.</Text>
             {unit.comps.map((c) => {
               const rules = RULES.visual_rules.filter((r) => RULE_COMP[r.id] === c.id);
               if (!rules.length) return null;
               return (
-                <View key={c.id} style={{ gap: 6 }}>
-                  <Text style={s.groupTitle}>{c.name}</Text>
-                  <View style={s.row}>
+                <View key={c.id} className="gap-1.5">
+                  <Text className="text-[14px] font-bold text-muted">{c.name}</Text>
+                  <View className={ROW}>
                     {rules.map((r) => (
                       <Chip key={r.id} title={r.name} active={manual.includes(r.class)}
                         onPress={() => setManual(manual.includes(r.class) ? manual.filter((x) => x !== r.class) : [...manual, r.class])} />
@@ -536,17 +606,17 @@ export default function App() {
     <>
       <Card title="Характеристики">
         <View>{specRows.map(([k, v], i) => <KV key={k} k={k} v={v} last={i === specRows.length - 1} />)}</View>
-        <Text style={s.note}>{unit.note}</Text>
+        <Text className={T.note}>{unit.note}</Text>
       </Card>
       <Card title="Узлы и ресурс">
-        <Text style={s.small}>Нажмите на узел, чтобы увидеть норматив, расчёт ресурса и фактическое состояние.</Text>
+        <Text className={T.small}>Нажмите на узел, чтобы увидеть норматив, расчёт ресурса и фактическое состояние.</Text>
         {Object.values(model.byComp).map((b) => (
           <Item key={b.c.id} status={b.status} onPress={() => setSheet(b.c.id)}>
-            <View style={s.rowBetween}>
-              <Text style={[s.h3, { flex: 1 }]}>{b.c.name}</Text>
+            <View className={BETWEEN}>
+              <Text className={`${T.h3} flex-1`}>{b.c.name}</Text>
               <Pill status={b.status} /><Chevron />
             </View>
-            {b.c.norm != null && <Text style={s.small}>Норматив {num(b.c.norm, 0)} ч</Text>}
+            {b.c.norm != null && <Text className={T.small}>Норматив {num(b.c.norm, 0)} ч</Text>}
             <ResBar res={b.res} />
           </Item>
         ))}
@@ -557,25 +627,25 @@ export default function App() {
   /* ----- вкладка «Датчики» ----- */
   const sensorsTab = !unit.sensors ? (
     <Card title="Датчики">
-      <Text style={s.body}>К этому агрегату датчики не подключены. Диагноз строится по фото и ресурсу узлов.</Text>
+      <Text className={T.body}>К этому агрегату датчики не подключены. Диагноз строится по фото и ресурсу узлов.</Text>
     </Card>
   ) : (
     <>
       <Card title="Показать ситуацию">
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 4 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 pr-1">
           {SCENARIOS.map(([t, i]) => <Chip key={t} title={t} active={idx === i} onPress={() => setIdx(i)} />)}
         </ScrollView>
-        <View style={s.timeBox}>
-          <Text style={s.small}>Момент времени</Text>
-          <Text style={s.timeVal}>{fmtTs(sensorTime(idx))}</Text>
-          <Text style={s.small}>{num(SENS.rpm[idx], 0)} об/мин · СКЗ {num(SENS.rms[idx], 2)} мм/с</Text>
+        <View className="bg-bg rounded-xl p-3 gap-0.5">
+          <Text className={T.small}>Момент времени</Text>
+          <Text className="text-[20px] font-bold text-fg" style={NUMS}>{fmtTs(sensorTime(idx))}</Text>
+          <Text className={T.small}>{num(SENS.rpm[idx], 0)} об/мин · СКЗ {num(SENS.rms[idx], 2)} мм/с</Text>
         </View>
-        <View style={s.row}>
+        <View className={ROW}>
           {[['−24 ч', -24], ['−1 ч', -1], ['+1 ч', 1], ['+24 ч', 24]].map(([t, d]) => (
-            <Btn key={t} small title={t} style={{ flex: 1 }} onPress={() => setIdx(Math.max(0, Math.min(499, idx + d)))} />
+            <Btn key={t} small title={t} className="flex-1" onPress={() => setIdx(Math.max(0, Math.min(499, idx + d)))} />
           ))}
         </View>
-        <Text style={s.faint}>Запись {idx + 1} из 500, шаг 1 час. Выбор момента заменяет живой поток с датчиков.</Text>
+        <Text className={T.faint}>Запись {idx + 1} из 500, шаг 1 час. Выбор момента заменяет живой поток с датчиков.</Text>
       </Card>
       <Card title="Показания">
         {RULES.sensor_rules.map((r) => {
@@ -585,16 +655,22 @@ export default function App() {
           const text = lvl === 'ok' ? 'Норма' : lvl === 'check' ? r.warn_label.replace('Пред: ', '') : r.alarm_label.replace('Тревога: ', '');
           return (
             <Item key={r.id} status={lvl}>
-              <Text style={s.h3}>{r.column.replace(/\s*\(.+\)/, '')}</Text>
-              <View style={s.rowBetween}>
-                <Text style={s.val}>{num(v, r.param[0] === 't' ? 1 : 2)} <Text style={s.valUnit}>{unitTxt}</Text></Text>
+              <Text className={T.h3}>{r.column.replace(/\s*\(.+\)/, '')}</Text>
+              <View className={BETWEEN}>
+                <Text className="text-[28px] font-bold text-fg" style={NUMS}>
+                  {num(v, r.param[0] === 't' ? 1 : 2)} <Text className="text-[15px] font-medium text-muted">{unitTxt}</Text>
+                </Text>
                 <Pill status={lvl} text={text} />
               </View>
               <Spark param={r.param} rule={r} idx={idx} />
-              <View style={s.legend}>
-                <View style={s.legendItem}><View style={[s.legendLine, { borderColor: C.check }]} /><Text style={s.small}>порог {num(r.warn, 1)}</Text></View>
-                <View style={s.legendItem}><View style={[s.legendLine, { borderColor: C.defect }]} /><Text style={s.small}>тревога {num(r.alarm, 1)}</Text></View>
-                <Text style={[s.small, { marginLeft: 'auto' }]}>96 ч</Text>
+              <View className="flex-row items-center gap-3.5">
+                <View className="flex-row items-center gap-1.5">
+                  <View className="w-4 border-t-2 border-dashed border-check" /><Text className={T.small}>порог {num(r.warn, 1)}</Text>
+                </View>
+                <View className="flex-row items-center gap-1.5">
+                  <View className="w-4 border-t-2 border-dashed border-defect" /><Text className={T.small}>тревога {num(r.alarm, 1)}</Text>
+                </View>
+                <Text className={`${T.small} ml-auto`}>96 ч</Text>
               </View>
             </Item>
           );
@@ -606,32 +682,32 @@ export default function App() {
   /* ----- вкладка «История» ----- */
   const rows = history.filter((h) => h.unit === unit.id);
   const historyTab = (
-    <Card title="История осмотров" right={<Text style={s.faint}>на телефоне</Text>}>
+    <Card title="История осмотров" right={<Text className={T.faint}>на телефоне</Text>}>
       {rows.length ? rows.map((h) => {
-        const st = ACTION_STATUS[h.action] || 'check';
-        const col = st === 'accent' ? C.accent : C[st];
-        const bg = st === 'accent' ? C.accentSoft : C[st + 'Bg'];
+        const c = st(ACTION_STATUS[h.action] || 'check');
         return (
-          <View key={h.ts + h.comp} style={[s.item, { borderLeftColor: col }]}>
-            <View style={s.rowBetween}>
-              <View style={[s.actTag, { backgroundColor: bg }]}><Text style={[s.actTagText, { color: col }]}>{ACTIONS[h.action] || h.action}</Text></View>
-              <Text style={s.small}>{fmtTs(h.ts)}</Text>
+          <View key={h.ts + h.comp} className={`border border-divider border-l-4 rounded-xl p-3 gap-2 bg-surface ${c.borderL}`}>
+            <View className={BETWEEN}>
+              <View className={`rounded-md px-2 py-[3px] ${c.soft}`}>
+                <Text className={`text-[13px] font-bold ${c.text}`}>{ACTIONS[h.action] || h.action}</Text>
+              </View>
+              <Text className={T.small}>{fmtTs(h.ts)}</Text>
             </View>
-            <Text style={s.h3}>{h.compName}</Text>
-            {!!h.findings && <Text style={s.body2}>{h.findings}</Text>}
-            {!!h.note && <Text style={s.body2}><Text style={s.bold}>Заметка: </Text>{h.note}</Text>}
+            <Text className={T.h3}>{h.compName}</Text>
+            {!!h.findings && <Text className={T.body2}>{h.findings}</Text>}
+            {!!h.note && <Text className={T.body2}><Text className="font-bold text-fg">Заметка: </Text>{h.note}</Text>}
             {!!(h.user && h.user.name) && (
-              <View style={s.who}>
+              <View className="flex-row items-center gap-1.5">
                 <Ionicons name="person-outline" size={15} color={C.muted} />
-                <Text style={s.small}>{h.user.name}{h.user.role ? `, ${h.user.role}` : ''}</Text>
+                <Text className={T.small}>{h.user.name}{h.user.role ? `, ${h.user.role}` : ''}</Text>
               </View>
             )}
           </View>
         );
       }) : (
-        <View style={s.empty}>
-          <Text style={s.emptyTitle}>Записей пока нет</Text>
-          <Text style={[s.muted, { textAlign: 'center' }]}>
+        <View className="items-center gap-2 py-6 px-2">
+          <Text className="text-[17px] font-bold text-fg">Записей пока нет</Text>
+          <Text className={`${T.muted} text-center`}>
             Откройте любой узел на вкладке «Осмотр» или «Карточка» и нажмите «Проверено», «Зафиксировать дефект» или «Заменено». Запись появится здесь.
           </Text>
         </View>
@@ -640,46 +716,54 @@ export default function App() {
   );
 
   const sb = sheet ? model.byComp[sheet] : null;
+  const HEAD_BTN = 'flex-1 min-h-[52px] gap-[3px] py-1.5 px-1.5 rounded-[10px] bg-white/15 items-center justify-center active:opacity-75';
 
   return (
-    <View style={s.root}>
-      <StatusBar barStyle="light-content" backgroundColor={C.accent} />
-      <View style={[s.header, { paddingTop: TOP + 10 }]}>
-        <View style={s.rowBetween}>
-          <View style={{ flex: 1 }}>
-            <View style={s.appRow}>
-              <Text style={s.appName}>MaintAR</Text>
-              <Pressable onPress={() => setShowSettings(true)} style={s.userChip} hitSlop={6}>
+    <View className="flex-1 bg-bg">
+      <StatusBar barStyle="light-content" backgroundColor={C.primary} />
+      <View className="bg-primary px-4 pb-3.5 gap-3" style={{ paddingTop: TOP + 10 }}>
+        <View className={BETWEEN}>
+          <View className="flex-1">
+            <View className="flex-row items-center gap-2.5">
+              <Text className="text-white text-[15px] font-extrabold tracking-[0.5px]">MaintAR</Text>
+              <Pressable onPress={() => setShowSettings(true)} hitSlop={6}
+                className="flex-row items-center gap-[5px] bg-white/15 rounded-full px-[9px] py-[3px] max-w-[190px]">
                 <Ionicons name="person-circle-outline" size={16} color="#fff" />
-                <Text style={s.userChipText} numberOfLines={1}>{user.name}</Text>
+                <Text className="text-white text-[12.5px] font-semibold" numberOfLines={1}>{user.name}</Text>
               </Pressable>
             </View>
-            <Text style={s.unitName} numberOfLines={2}>{unit.name}</Text>
-            <Text style={s.unitCode}>{unit.id}{unit.demo ? ' · учебная карточка' : ' · по паспорту'}</Text>
+            <Text className="text-white text-[20px] font-bold mt-0.5" numberOfLines={2}>{unit.name}</Text>
+            <Text className="text-white/75 text-[13px] mt-0.5">{unit.id}{unit.demo ? ' · учебная карточка' : ' · по паспорту'}</Text>
           </View>
           <Pill status={model.overall} big />
         </View>
-        <View style={s.headActions}>
-          <Pressable style={s.headBtn} onPress={() => setCamMode('qr')}><Ionicons name="qr-code-outline" size={18} color="#fff" /><Text style={s.headBtnText}>Сканировать QR</Text></Pressable>
-          <Pressable style={s.headBtn} onPress={() => setShowUnits(true)}><Ionicons name="swap-horizontal-outline" size={18} color="#fff" /><Text style={s.headBtnText}>Сменить агрегат</Text></Pressable>
-          <Pressable style={s.headBtn} onPress={() => setShowSettings(true)}><Ionicons name="settings-outline" size={18} color="#fff" /><Text style={s.headBtnText}>Настройки</Text></Pressable>
+        <View className="flex-row gap-2">
+          <Pressable className={HEAD_BTN} onPress={() => setCamMode('qr')}>
+            <Ionicons name="qr-code-outline" size={18} color="#fff" /><Text className="text-white text-[12px] font-semibold text-center">Сканировать QR</Text>
+          </Pressable>
+          <Pressable className={HEAD_BTN} onPress={() => setShowUnits(true)}>
+            <Ionicons name="swap-horizontal-outline" size={18} color="#fff" /><Text className="text-white text-[12px] font-semibold text-center">Сменить агрегат</Text>
+          </Pressable>
+          <Pressable className={HEAD_BTN} onPress={() => setShowSettings(true)}>
+            <Ionicons name="settings-outline" size={18} color="#fff" /><Text className="text-white text-[12px] font-semibold text-center">Настройки</Text>
+          </Pressable>
         </View>
-        {!!idNote && <Text style={s.idNote}>{idNote}</Text>}
+        {!!idNote && <Text className="text-white text-[13px] opacity-90">{idNote}</Text>}
       </View>
 
-      <ScrollView ref={scroll} contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scroll} contentContainerClassName="p-3.5 pb-7 gap-3.5" keyboardShouldPersistTaps="handled">
         {tab === 'inspect' ? inspect : tab === 'card' ? card : tab === 'sensors' ? sensorsTab : historyTab}
       </ScrollView>
 
-      <View style={[s.tabs, { paddingBottom: BOTTOM }]}>
+      <View className="flex-row bg-surface border-t border-line" style={{ paddingBottom: BOTTOM }}>
         {TABS.map(([id, title, icon]) => {
           const on = tab === id;
           return (
-            <Pressable key={id} onPress={() => switchTab(id)} style={s.tab}>
-              <View style={[s.tabInd, on && { backgroundColor: C.accent }]} />
-              <View style={[s.tabPill, on && { backgroundColor: C.accentSoft }]}>
-                <Ionicons name={on ? icon.replace('-outline', '') : icon} size={24} color={on ? C.accent : C.muted} />
-                <Text style={[s.tabText, on && { color: C.accent, fontWeight: '700' }]}>{title}</Text>
+            <Pressable key={id} onPress={() => switchTab(id)} className="flex-1 items-center min-h-[64px] justify-center">
+              <View className={`absolute top-0 left-[22%] right-[22%] h-[3px] rounded-b-[3px] ${on ? 'bg-primary' : ''}`} />
+              <View className={`px-3.5 py-1.5 rounded-xl items-center gap-0.5 ${on ? 'bg-primary-soft' : ''}`}>
+                <Ionicons name={on ? icon.replace('-outline', '') : icon} size={24} color={on ? C.primary : C.muted} />
+                <Text className={`text-[13px] ${on ? 'text-primary font-bold' : 'text-muted font-medium'}`}>{title}</Text>
               </View>
             </Pressable>
           );
@@ -687,263 +771,95 @@ export default function App() {
       </View>
 
       {/* окно узла */}
-      <Modal visible={!!sb} transparent animationType="slide" onRequestClose={closeSheet} statusBarTranslucent>
-        <View style={s.backdrop}>
-          <Pressable style={{ flex: 1 }} onPress={closeSheet} />
-          {sb && (
-            <View style={[s.sheet, { paddingBottom: BOTTOM + 8 }]}>
-              <View style={s.grabber} />
-              <View style={s.sheetHead}>
-                <View style={{ flex: 1, gap: 6 }}>
-                  <Text style={s.h1}>{sb.c.name}</Text>
-                  <View style={{ alignSelf: 'flex-start' }}><Pill status={sb.status} text={STATUS_TEXT[sb.status]} /></View>
-                </View>
-                <Pressable onPress={closeSheet} hitSlop={10} style={s.closeBtn}><Ionicons name="close" size={20} color={C.accent} /><Text style={s.closeText}>Закрыть</Text></Pressable>
-              </View>
-              <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12, paddingBottom: 8 }}>
-                <Text style={s.muted}>{sb.c.desc}</Text>
-                <View style={s.block}>
-                  <Text style={s.blockTitle}>По нормативу</Text>
-                  <KV k="Нормативный срок" v={sb.c.norm != null ? `${num(sb.c.norm, 0)} ч` : 'не задан'} />
-                  <KV k="Установлен" v={fmtDate(sb.res.s.date)} last />
-                </View>
-                <View style={s.block}>
-                  <Text style={s.blockTitle}>Расчёт ресурса</Text>
-                  {sb.res.kind === 'calc' && <KV k="Наработка узла" v={`${num(sb.res.used, 0)} ч`} />}
-                  <ResBar res={sb.res} />
-                </View>
-                <View style={s.block}>
-                  <Text style={s.blockTitle}>Фактическое состояние</Text>
-                  <Text style={[s.body, { color: sb.findings.length ? C[sb.cond] : C.ok, fontWeight: '600' }]}>
-                    {sb.findings.length ? STATUS_TEXT[sb.cond] : 'Замечаний по фото и датчикам нет'}
-                  </Text>
-                  <KV k="Последняя проверка" v={sb.res.s.lastCheck ? fmtTs(sb.res.s.lastCheck) : 'нет записей'} last />
-                </View>
-                {sb.findings.length > 0 && <Text style={s.h2}>Рекомендации</Text>}
-                {sortFindings(sb.findings).map((f) => (
-                  <Item key={f.id} status={f.status}>
-                    <Text style={s.h3}>{f.label}</Text>
-                    <Text style={s.src}>{SRC_TEXT[f.src] || f.src}</Text>
-                    <Text style={s.body2}>{f.detail}</Text>
-                    <View style={s.todo}>
-                      <Text style={s.todoTitle}>Что делать</Text>
-                      <Text style={s.body2c}>{f.action}</Text>
-                    </View>
-                  </Item>
-                ))}
-                <TextInput style={s.input} multiline value={note} onChangeText={setNote}
-                  placeholder="Заметка: что увидели и что сделали" placeholderTextColor={C.faint} />
-                <Btn title="Проверено" kind="primary" onPress={() => record('checked')} />
-                <Btn title="Зафиксировать дефект" kind="danger" onPress={() => record('defect')} />
-                <Btn title="Заменено" onPress={() => record('replaced')} />
-              </ScrollView>
-            </View>
-          )}
-        </View>
-      </Modal>
+      <Sheet visible={!!sb} onClose={closeSheet}
+        head={sb && (
+          <View className="flex-1 gap-1.5">
+            <Text className={T.h1}>{sb.c.name}</Text>
+            <View className="self-start"><Pill status={sb.status} text={STATUS_TEXT[sb.status]} /></View>
+          </View>
+        )}>
+        {sb && (
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-3 pb-2">
+            <Text className={T.muted}>{sb.c.desc}</Text>
+            <Block title="По нормативу">
+              <KV k="Нормативный срок" v={sb.c.norm != null ? `${num(sb.c.norm, 0)} ч` : 'не задан'} />
+              <KV k="Установлен" v={fmtDate(sb.res.s.date)} last />
+            </Block>
+            <Block title="Расчёт ресурса">
+              {sb.res.kind === 'calc' && <KV k="Наработка узла" v={`${num(sb.res.used, 0)} ч`} />}
+              <ResBar res={sb.res} />
+            </Block>
+            <Block title="Фактическое состояние">
+              <Text className={`${T.body} font-semibold ${sb.findings.length ? st(sb.cond).text : 'text-ok'}`}>
+                {sb.findings.length ? STATUS_TEXT[sb.cond] : 'Замечаний по фото и датчикам нет'}
+              </Text>
+              <KV k="Последняя проверка" v={sb.res.s.lastCheck ? fmtTs(sb.res.s.lastCheck) : 'нет записей'} last />
+            </Block>
+            {sb.findings.length > 0 && <Text className={T.h2}>Рекомендации</Text>}
+            {sortFindings(sb.findings).map((f) => (
+              <Item key={f.id} status={f.status}>
+                <Text className={T.h3}>{f.label}</Text>
+                <Text className={T.src}>{SRC_TEXT[f.src] || f.src}</Text>
+                <Text className={T.body2}>{f.detail}</Text>
+                <Todo text={f.action} />
+              </Item>
+            ))}
+            <TextInput className={`${INPUT} min-h-[80px]`} style={{ textAlignVertical: 'top' }} multiline value={note} onChangeText={setNote}
+              placeholder="Заметка: что увидели и что сделали" placeholderTextColor={C.faint} />
+            <Btn title="Проверено" kind="primary" onPress={() => record('checked')} />
+            <Btn title="Зафиксировать дефект" kind="danger" onPress={() => record('defect')} />
+            <Btn title="Заменено" onPress={() => record('replaced')} />
+          </ScrollView>
+        )}
+      </Sheet>
 
       {/* выбор агрегата */}
-      <Modal visible={showUnits} transparent animationType="slide" onRequestClose={() => setShowUnits(false)} statusBarTranslucent>
-        <View style={s.backdrop}>
-          <Pressable style={{ flex: 1 }} onPress={() => setShowUnits(false)} />
-          <View style={[s.sheet, { paddingBottom: BOTTOM + 8 }]}>
-            <View style={s.grabber} />
-            <View style={s.sheetHead}>
-              <Text style={[s.h1, { flex: 1 }]}>Выберите агрегат</Text>
-              <Pressable onPress={() => setShowUnits(false)} hitSlop={10} style={s.closeBtn}><Ionicons name="close" size={20} color={C.accent} /><Text style={s.closeText}>Закрыть</Text></Pressable>
-            </View>
-            {UNITS.map((u) => {
-              const on = u.id === unitId;
-              return (
-                <Pressable key={u.id} onPress={() => chooseUnit(u.id, '')}
-                  style={[s.unitRow, on && { borderColor: C.accent, backgroundColor: C.accentSoft }]}>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={s.h3}>{u.name}</Text>
-                    <Text style={s.small}>{u.id}{u.sensors ? ' · есть датчики' : ' · без датчиков'}</Text>
-                  </View>
-                  {on ? <Text style={[s.small, { color: C.accent, fontWeight: '700' }]}>Выбран</Text> : <Chevron />}
-                </Pressable>
-              );
-            })}
-            <Btn title="Сканировать QR-код" onPress={() => { setShowUnits(false); setCamMode('qr'); }} />
-          </View>
-        </View>
-      </Modal>
+      <Sheet visible={showUnits} onClose={() => setShowUnits(false)} title="Выберите агрегат">
+        {UNITS.map((u) => {
+          const on = u.id === unitId;
+          return (
+            <Pressable key={u.id} onPress={() => chooseUnit(u.id, '')}
+              className={`flex-row items-center gap-2.5 border rounded-xl p-3.5 active:opacity-75 ${on ? 'border-primary bg-primary-soft' : 'border-line'}`}>
+              <View className="flex-1 gap-0.5">
+                <Text className={T.h3}>{u.name}</Text>
+                <Text className={T.small}>{u.id}{u.sensors ? ' · есть датчики' : ' · без датчиков'}</Text>
+              </View>
+              {on ? <Text className={`${T.small} text-primary font-bold`}>Выбран</Text> : <Chevron />}
+            </Pressable>
+          );
+        })}
+        <Btn title="Сканировать QR-код" onPress={() => { setShowUnits(false); setCamMode('qr'); }} />
+      </Sheet>
 
       {/* настройки */}
-      <Modal visible={showSettings} transparent animationType="slide" onRequestClose={closeSettings} statusBarTranslucent>
-        <View style={s.backdrop}>
-          <Pressable style={{ flex: 1 }} onPress={closeSettings} />
-          <View style={[s.sheet, { paddingBottom: BOTTOM + 8 }]}>
-            <View style={s.grabber} />
-            <View style={s.sheetHead}>
-              <Text style={[s.h1, { flex: 1 }]}>Настройки</Text>
-              <Pressable onPress={closeSettings} hitSlop={10} style={s.closeBtn}><Ionicons name="close" size={20} color={C.accent} /><Text style={s.closeText}>Закрыть</Text></Pressable>
+      <Sheet visible={showSettings} onClose={closeSettings} title="Настройки">
+        <Block title="Сотрудник">
+          <View className={BETWEEN}>
+            <Ionicons name="person-circle-outline" size={40} color={C.primary} />
+            <View className="flex-1">
+              <Text className={T.h3}>{user.name}</Text>
+              <Text className={T.small}>{user.role} · логин {user.login}</Text>
             </View>
-            <View style={s.block}>
-              <Text style={s.blockTitle}>Сотрудник</Text>
-              <View style={[s.rowBetween, { alignItems: 'center' }]}>
-                <Ionicons name="person-circle-outline" size={40} color={C.accent} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.h3}>{user.name}</Text>
-                  <Text style={s.small}>{user.role} · логин {user.login}</Text>
-                </View>
-              </View>
-              {confirmLogout ? (
-                <View style={{ gap: 8 }}>
-                  <Text style={s.body}>Выйти из учётной записи? История осмотров останется на телефоне.</Text>
-                  <View style={s.row}>
-                    <Btn title="Выйти" kind="danger" icon="log-out-outline" onPress={doLogout} style={{ flex: 1 }} />
-                    <Btn title="Отмена" onPress={() => setConfirmLogout(false)} style={{ flex: 1 }} />
-                  </View>
-                </View>
-              ) : (
-                <Btn title="Выйти" icon="log-out-outline" onPress={() => setConfirmLogout(true)} />
-              )}
-            </View>
-            <Text style={s.h3}>Сервис анализа фото</Text>
-            <Text style={s.muted}>
-              Адрес сервера, который находит дефекты на снимке. Например: http://192.168.1.50:8000
-            </Text>
-            <TextInput style={[s.input, { minHeight: 48 }]} value={apiUrl} onChangeText={setApiUrl} autoCapitalize="none" autoCorrect={false}
-              keyboardType="url" placeholder="http://адрес-сервера:8000" placeholderTextColor={C.faint} />
-            <Text style={s.faint}>{apiUrl.trim() ? 'Адрес задан. Новые фото будут отправляться на анализ.' : 'Адрес не задан. Без него ИИ не сможет проверить ваши фото.'}</Text>
-            <Btn title="Готово" kind="primary" onPress={closeSettings} />
           </View>
-        </View>
-      </Modal>
+          {confirmLogout ? (
+            <View className="gap-2">
+              <Text className={T.body}>Выйти из учётной записи? История осмотров останется на телефоне.</Text>
+              <View className={ROW}>
+                <Btn title="Выйти" kind="danger" icon="log-out-outline" onPress={doLogout} className="flex-1" />
+                <Btn title="Отмена" onPress={() => setConfirmLogout(false)} className="flex-1" />
+              </View>
+            </View>
+          ) : (
+            <Btn title="Выйти" icon="log-out-outline" onPress={() => setConfirmLogout(true)} />
+          )}
+        </Block>
+        <Text className={T.h3}>Сервис анализа фото</Text>
+        <Text className={T.muted}>Адрес сервера, который находит дефекты на снимке. Например: http://192.168.1.50:8000</Text>
+        <TextInput className={`${INPUT} min-h-[48px]`} value={apiUrl} onChangeText={setApiUrl} autoCapitalize="none" autoCorrect={false}
+          keyboardType="url" placeholder="http://адрес-сервера:8000" placeholderTextColor={C.faint} />
+        <Text className={T.faint}>{apiUrl.trim() ? 'Адрес задан. Новые фото будут отправляться на анализ.' : 'Адрес не задан. Без него ИИ не сможет проверить ваши фото.'}</Text>
+        <Btn title="Готово" kind="primary" onPress={closeSettings} />
+      </Sheet>
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
-  scroll: { padding: 14, paddingBottom: 28, gap: 14 },
-
-  header: { backgroundColor: C.accent, paddingHorizontal: 16, paddingBottom: 14, gap: 12 },
-  appName: { color: '#fff', fontSize: 15, fontWeight: '800', letterSpacing: 0.5 },
-  appRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  userChip: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3, maxWidth: 190 },
-  userChipText: { color: '#fff', fontSize: 12.5, fontWeight: '600' },
-  who: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  unitName: { color: '#fff', fontSize: 20, fontWeight: '700', marginTop: 2 },
-  unitCode: { color: 'rgba(255,255,255,0.75)', fontSize: 13, marginTop: 2 },
-  headActions: { flexDirection: 'row', gap: 8 },
-  headBtn: { flex: 1, minHeight: 52, gap: 3, paddingVertical: 6, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
-  headBtnText: { color: '#fff', fontSize: 12, fontWeight: '600', textAlign: 'center' },
-  idNote: { color: '#fff', fontSize: 13, opacity: 0.9 },
-
-  card: { backgroundColor: C.surface, borderRadius: 14, padding: 16, gap: 12, borderWidth: 1, borderColor: C.divider },
-  stepHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  stepNum: { width: 30, height: 30, borderRadius: 15, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
-  stepNumText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
-  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  h1: { fontSize: 21, fontWeight: '700', color: C.fg },
-  h2: { fontSize: 18, fontWeight: '700', color: C.fg },
-  h3: { fontSize: 16, fontWeight: '600', color: C.fg },
-  body: { fontSize: 15, color: C.fg, lineHeight: 22 },
-  body2: { fontSize: 15, color: C.muted, lineHeight: 21 },
-  body2c: { fontSize: 15, color: C.fg, lineHeight: 21 },
-  small: { fontSize: 13, color: C.muted, lineHeight: 18 },
-  faint: { fontSize: 13, color: C.faint, lineHeight: 18 },
-  bold: { fontWeight: '700', color: C.fg },
-  muted: { fontSize: 15, color: C.muted, lineHeight: 21 },
-  hint: { fontSize: 14, color: C.accent, textAlign: 'center' },
-  note: { fontSize: 14, color: C.muted, borderLeftWidth: 3, borderLeftColor: C.accent, paddingLeft: 10, lineHeight: 20 },
-  link: { fontSize: 15, color: C.accent, fontWeight: '600', textDecorationLine: 'underline' },
-  chevron: { fontSize: 24, color: C.faint, marginLeft: 2, marginTop: -3 },
-  code: { fontSize: 11.5, color: C.faint, textAlign: 'right' },
-  src: { alignSelf: 'flex-start', fontSize: 13, color: C.accent, backgroundColor: C.accentSoft, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2, overflow: 'hidden' },
-  groupTitle: { fontSize: 14, fontWeight: '700', color: C.muted },
-
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  pillBig: { paddingHorizontal: 14, paddingVertical: 8 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  pillText: { fontSize: 13, fontWeight: '700' },
-
-  btn: { minHeight: 48, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  btn_primary: { backgroundColor: C.accent, borderColor: C.accent, minHeight: 54 },
-  btn_secondary: { backgroundColor: C.surface, borderColor: C.line },
-  btn_ghost: { backgroundColor: 'transparent', borderColor: 'transparent' },
-  btn_danger: { backgroundColor: C.surface, borderColor: C.defect },
-  btn_dark: { backgroundColor: 'rgba(255,255,255,0.15)', borderColor: 'rgba(255,255,255,0.35)' },
-  btnSmall: { minHeight: 40, paddingHorizontal: 12, paddingVertical: 6 },
-  btnText: { fontSize: 16, fontWeight: '600', textAlign: 'center' },
-  btnText_primary: { color: '#fff', fontSize: 17 },
-  btnText_secondary: { color: C.fg },
-  btnText_ghost: { color: C.muted },
-  btnText_danger: { color: C.defect },
-  btnText_dark: { color: '#fff' },
-
-  chip: { borderWidth: 1, borderColor: C.line, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9, backgroundColor: C.surface },
-  chipText: { fontSize: 14, color: C.fg },
-
-  item: { borderWidth: 1, borderColor: C.divider, borderLeftWidth: 4, borderRadius: 12, padding: 12, gap: 8, backgroundColor: C.surface },
-  todo: { backgroundColor: C.bg, borderRadius: 10, padding: 10, gap: 2 },
-  todoTitle: { fontSize: 13, fontWeight: '700', color: C.accent },
-  notice: { borderRadius: 12, padding: 12, gap: 10 },
-  samples: { gap: 8, borderTopWidth: 1, borderTopColor: C.divider, paddingTop: 12 },
-
-  banner: { borderRadius: 12, padding: 14, gap: 8, borderLeftWidth: 5 },
-  bannerTitle: { fontSize: 18, fontWeight: '700' },
-  bannerText: { fontSize: 15, color: C.fg, lineHeight: 21 },
-
-  stage: { width: '100%', backgroundColor: C.sunken, borderRadius: 12, overflow: 'hidden' },
-  stageEmpty: { padding: 28, gap: 6, alignItems: 'center', borderWidth: 2, borderStyle: 'dashed', borderColor: C.line, backgroundColor: C.bg },
-  stageEmptyTitle: { fontSize: 16, fontWeight: '700', color: C.fg },
-  photoImg: { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%' },
-  box: { position: 'absolute', borderWidth: 3, borderRadius: 4 },
-  boxLabel: { position: 'absolute', height: 22, justifyContent: 'center', paddingHorizontal: 6, borderRadius: 4 },
-  boxLabelText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  busy: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(8,24,34,0.55)', alignItems: 'center', justifyContent: 'center', gap: 10 },
-  busyText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-
-  bar: { height: 10, borderRadius: 5, backgroundColor: C.sunken, overflow: 'hidden' },
-  thresh: { position: 'absolute', left: 0, right: 0, borderTopWidth: 1.5, borderStyle: 'dashed' },
-  legend: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  legendLine: { width: 16, borderTopWidth: 2, borderStyle: 'dashed' },
-  val: { fontSize: 28, fontWeight: '700', color: C.fg, fontVariant: ['tabular-nums'] },
-  valUnit: { fontSize: 15, fontWeight: '500', color: C.muted },
-  timeBox: { backgroundColor: C.bg, borderRadius: 12, padding: 12, gap: 2 },
-  timeVal: { fontSize: 20, fontWeight: '700', color: C.fg, fontVariant: ['tabular-nums'] },
-
-  kv: { flexDirection: 'row', gap: 12, paddingVertical: 9 },
-  kvLine: { borderBottomWidth: 1, borderBottomColor: C.divider },
-  kvK: { flex: 1, fontSize: 14, color: C.muted, lineHeight: 20 },
-  kvV: { flex: 1.3, fontSize: 15, color: C.fg, lineHeight: 20, textAlign: 'right' },
-
-  actTag: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  actTagText: { fontSize: 13, fontWeight: '700' },
-  empty: { alignItems: 'center', gap: 8, paddingVertical: 24, paddingHorizontal: 8 },
-  emptyTitle: { fontSize: 17, fontWeight: '700', color: C.fg },
-
-  tabs: { flexDirection: 'row', backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.line },
-  tab: { flex: 1, alignItems: 'center', minHeight: 64, justifyContent: 'center' },
-  tabInd: { position: 'absolute', top: 0, left: '22%', right: '22%', height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3 },
-  tabPill: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 12, alignItems: 'center', gap: 2 },
-  tabText: { fontSize: 13, color: C.muted, fontWeight: '500' },
-
-  backdrop: { flex: 1, backgroundColor: 'rgba(5,12,18,0.5)' },
-  sheet: { backgroundColor: C.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingTop: 8, gap: 12, maxHeight: '90%' },
-  grabber: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: C.line },
-  sheetHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  closeBtn: { minHeight: 40, paddingHorizontal: 12, flexDirection: 'row', gap: 4, borderRadius: 10, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center' },
-  closeText: { fontSize: 15, fontWeight: '600', color: C.accent },
-  block: { backgroundColor: C.bg, borderRadius: 12, padding: 12, gap: 6 },
-  blockTitle: { fontSize: 13, fontWeight: '700', color: C.accent, letterSpacing: 0.5, textTransform: 'uppercase' },
-  unitRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 14 },
-  input: { borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 12, minHeight: 80, fontSize: 15, color: C.fg, textAlignVertical: 'top', backgroundColor: C.surface },
-
-  camWrap: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
-  camTop: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 16, paddingBottom: 14, gap: 6, backgroundColor: 'rgba(0,0,0,0.5)' },
-  camTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
-  camText: { color: '#fff', fontSize: 15 },
-  camHint: { borderLeftWidth: 4, paddingLeft: 10, paddingVertical: 2 },
-  camBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 20, backgroundColor: 'rgba(0,0,0,0.5)' },
-  qrFrame: { width: 240, height: 240, borderWidth: 3, borderColor: '#fff', borderRadius: 20 },
-  shutter: { width: 76, height: 76, borderRadius: 38, borderWidth: 4, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  shutterIn: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#fff' },
-});
