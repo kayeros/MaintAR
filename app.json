@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "Обходчик",
-    "slug": "obhodchik",
+    "name": "MaintAR",
+    "slug": "maintar",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "ru.gitpotam.obhodchik"
+      "bundleIdentifier": "ru.gitpotam.maintar"
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +17,7 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "package": "ru.gitpotam.obhodchik",
+      "package": "ru.gitpotam.maintar",
       "permissions": [
         "CAMERA"
       ]

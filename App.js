@@ -1,4 +1,4 @@
-// «Обходчик»: AR-помощник инженера для диагностики промышленного оборудования.
+// MaintAR: AR-помощник инженера для диагностики промышленного оборудования.
 // Всё работает на телефоне без сервера: правила, датчики из базы кейса, карточки, ресурс, история.
 // Дефекты на фото определяет сервис анализа (адрес задаётся в настройках). Ручная правка нужна, только если ИИ ошибся.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -623,7 +623,7 @@ export default function App() {
       <View style={[s.header, { paddingTop: TOP + 10 }]}>
         <View style={s.rowBetween}>
           <View style={{ flex: 1 }}>
-            <Text style={s.appName}>ОБХОДЧИК</Text>
+            <Text style={s.appName}>MaintAR <Text style={s.appTag}>· AR-помощник инженера</Text></Text>
             <Text style={s.unitName} numberOfLines={2}>{unit.name}</Text>
             <Text style={s.unitCode}>{unit.id}{unit.demo ? ' · учебная карточка' : ' · по паспорту'}</Text>
           </View>
@@ -770,7 +770,8 @@ const s = StyleSheet.create({
   scroll: { padding: 14, paddingBottom: 28, gap: 14 },
 
   header: { backgroundColor: C.accent, paddingHorizontal: 16, paddingBottom: 14, gap: 12 },
-  appName: { color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '700', letterSpacing: 1.5 },
+  appName: { color: '#fff', fontSize: 15, fontWeight: '800', letterSpacing: 0.5 },
+  appTag: { color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '500', letterSpacing: 0 },
   unitName: { color: '#fff', fontSize: 20, fontWeight: '700', marginTop: 2 },
   unitCode: { color: 'rgba(255,255,255,0.75)', fontSize: 13, marginTop: 2 },
   headActions: { flexDirection: 'row', gap: 8 },
