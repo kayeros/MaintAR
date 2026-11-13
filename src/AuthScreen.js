@@ -8,7 +8,7 @@ import { DEMO, ROLES, login, register, validateRegistration } from './auth';
 import { colors as C } from './theme';
 
 const TOP = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 50;
-const ERR = 'text-[13.5px] text-defect';
+const ERR = 'text-[14px] text-defect';
 
 export function Splash() {
   return (
@@ -27,7 +27,7 @@ function Field({ label, icon, error, secure, inputRef, ...props }) {
       <Text className="text-[14px] font-semibold text-muted">{label}</Text>
       <View className={`flex-row items-center gap-2.5 border rounded-xl px-3 min-h-[50px] bg-surface ${error ? 'border-defect' : 'border-line'}`}>
         <Ionicons name={icon} size={20} color={C.faint} />
-        <TextInput ref={inputRef} className="flex-1 text-[16px] text-fg py-2.5" placeholderTextColor={C.faint}
+        <TextInput ref={inputRef} className="flex-1 text-[17px] text-fg py-2.5" placeholderTextColor={C.faint}
           autoCapitalize="none" autoCorrect={false} secureTextEntry={secure && hidden} {...props} />
         {secure && (
           <Pressable onPress={() => setHidden(!hidden)} hitSlop={10} accessibilityLabel={hidden ? 'Показать пароль' : 'Скрыть пароль'}>
@@ -86,12 +86,12 @@ export default function AuthScreen({ onAuth }) {
               <Ionicons name="scan-outline" size={34} color="#fff" />
             </View>
             <Text className="text-white text-[32px] font-extrabold tracking-[0.5px]">MaintAR</Text>
-            <Text className="text-white/80 text-[15px]">AR-помощник инженера</Text>
+            <Text className="text-white/80 text-[17px]">AR-помощник инженера</Text>
           </View>
 
           <View className="px-4 -mt-9 items-center">
             <View className="bg-surface rounded-2xl p-[18px] gap-3.5 border border-divider w-full max-w-[480px]">
-              <Text className="text-[21px] font-bold text-fg">{isReg ? 'Регистрация сотрудника' : 'Вход'}</Text>
+              <Text className="text-[24px] font-semibold text-fg">{isReg ? 'Регистрация сотрудника' : 'Вход'}</Text>
               {isReg && (
                 <>
                   <Field label="Фамилия и имя" icon="person-outline" value={f.name} onChangeText={set('name')} error={errs.name}
@@ -105,7 +105,7 @@ export default function AuthScreen({ onAuth }) {
                           <Pressable key={r} onPress={() => set('role')(r)}
                             className={`flex-row items-center gap-2.5 border rounded-xl px-3 min-h-[48px] ${on ? 'border-primary bg-primary-soft' : 'border-line'}`}>
                             <Ionicons name={on ? 'radio-button-on' : 'radio-button-off'} size={20} color={on ? C.primary : C.faint} />
-                            <Text className={`text-[15px] ${on ? 'text-primary font-semibold' : 'text-fg'}`}>{r}</Text>
+                            <Text className={`text-[17px] ${on ? 'text-primary font-semibold' : 'text-fg'}`}>{r}</Text>
                           </Pressable>
                         );
                       })}
@@ -124,7 +124,7 @@ export default function AuthScreen({ onAuth }) {
                 <Field label="Повторите пароль" icon="lock-closed-outline" secure value={f.password2} onChangeText={set('password2')}
                   error={errs.password2} placeholder="Ещё раз тот же пароль" returnKeyType="go" onSubmitEditing={submit} />
               )}
-              {!!common && <View className="bg-defect-bg rounded-[10px] p-2.5"><Text className="text-[15px] text-defect">{common}</Text></View>}
+              {!!common && <View className="bg-defect-bg rounded-[10px] p-2.5"><Text className="text-[17px] text-defect">{common}</Text></View>}
 
               <Pressable onPress={submit} disabled={busy}
                 className={`bg-primary rounded-xl min-h-[54px] items-center justify-center mt-1 active:opacity-80 ${busy ? 'opacity-80' : ''}`}>
@@ -132,7 +132,7 @@ export default function AuthScreen({ onAuth }) {
               </Pressable>
 
               <Pressable onPress={() => switchMode(isReg ? 'login' : 'register')} hitSlop={8} className="self-center py-1.5">
-                <Text className="text-[15px] text-muted text-center">
+                <Text className="text-[17px] text-muted text-center">
                   {isReg ? 'Уже есть учётная запись? ' : 'Нет учётной записи? '}
                   <Text className="text-primary font-bold">{isReg ? 'Войти' : 'Зарегистрироваться'}</Text>
                 </Text>
@@ -143,12 +143,12 @@ export default function AuthScreen({ onAuth }) {
           {!isReg && (
             <Pressable onPress={() => setF({ ...f, login: DEMO.login, password: DEMO.password })} className="flex-row gap-2 items-start mx-5 mt-4">
               <Ionicons name="information-circle-outline" size={18} color={C.muted} />
-              <Text className="flex-1 text-[13.5px] text-muted leading-[19px]">
+              <Text className="flex-1 text-[14px] text-muted leading-[20px]">
                 Демо-доступ: логин {DEMO.login}, пароль {DEMO.password}. Нажмите, чтобы подставить.
               </Text>
             </Pressable>
           )}
-          <Text className="text-[12.5px] text-faint text-center mt-3">Учётные записи хранятся на этом устройстве</Text>
+          <Text className="text-[14px] text-muted text-center mt-3">Учётные записи хранятся на этом устройстве</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>

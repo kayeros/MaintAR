@@ -2,7 +2,12 @@
 // Всё работает на телефоне без сервера: правила, датчики из базы кейса, карточки, ресурс, история.
 // Дефекты на фото определяет сервис анализа (адрес задаётся в профиле). Ручная правка нужна, только если ИИ ошибся.
 // Стили: Tailwind через NativeWind (className). Палитра в src/theme.js, inline style только для значений, вычисляемых на лету.
-// Интерфейс намеренно простой: на экране одно главное действие, детали по нажатию, демо-инструменты в «Режиме демонстрации».
+//
+// Дизайн-система:
+//  - сетка 8: отступ экрана 16, между блоками 24, внутри карточек 16; радиус 12 у карточек и кнопок; одна граница на всё;
+//  - три размера текста: заголовок 24, основной 17, подписи 14;
+//  - на экране одна главная кнопка (56, во всю ширину, внизу), второстепенные контурные (48), ссылки остаются ссылками;
+//  - статус всегда показан иконкой, словом и цветом.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Dimensions, Image, Modal, Platform, Pressable, ScrollView, StatusBar, Switch, Text, TextInput, View,
@@ -16,46 +21,53 @@ import { currentUser, logout } from './src/auth';
 import { colors as C } from './src/theme';
 import { UNITS, SCENARIOS, SAMPLES } from './src/data/units';
 import {
-  RULES, SENS, SERIES, RULE_COMP, STATUS_TEXT, STATUS_SHORT, buildModel, cleanVision, fmtDate, fmtTs, num, sensorTime, sensorsAt,
+  RULES, SENS, SERIES, RULE_COMP, STATUS_SHORT, buildModel, cleanVision, fmtDate, fmtTs, num, sensorTime, sensorsAt,
 } from './src/engine';
 
-const TABS = [['inspect', 'Осмотр', 'scan-outline'], ['unit', 'Оборудование', 'construct-outline'], ['history', 'История', 'time-outline']];
-const ACTIONS = { inspection: 'Осмотр', checked: 'Проверено', defect: 'Дефект', replaced: 'Заменено' };
-const ACTION_STATUS = { checked: 'ok', defect: 'defect', replaced: 'primary' };
-const SRC_TEXT = { 'камера': 'по фото', 'датчики': 'по датчикам', 'камера + датчики': 'фото и датчики' };
+const TABS = [['inspect', 'Осмотр', 'scan-outline'], ['unit', 'Оборудование', 'construct-outline'], ['history', 'Журнал', 'time-outline']];
+const ACTIONS = { inspection: 'Осмотр по фото', checked: 'Проверено', defect: 'Дефект', replaced: 'Заменено' };
+const ACTION_STATUS = { checked: 'ok', defect: 'defect', replaced: 'ok' };
+const ACTION_ICON = { inspection: 'camera', checked: 'checkmark', defect: 'warning-outline', replaced: 'refresh' };
+const SRC_TEXT = { 'камера': 'по фото', 'датчики': 'по датчикам', 'камера + датчики': 'по фото и датчикам' };
 const RANK = { defect: 2, check: 1, ok: 0 };
+const SHORT = { 'CN-1': 'ЦН-1', 'AMS-21031004-1': 'Насос AMS' };
+const COMP_ICON = {
+  impeller: 'sync-outline', rotor: 'sync-outline', stator: 'disc-outline', bearing: 'radio-button-on-outline', seal: 'water-outline',
+  coupling: 'link-outline', motor: 'flash-outline', terminal: 'git-network-outline', casing: 'cube-outline', frame: 'grid-outline',
+  piping: 'git-commit-outline',
+};
+// Человеческие названия датчиков вместо аббревиатур из базы.
+const SENSOR_NAME = {
+  amp_1x: ['Вибрация: дисбаланс', 'pulse-outline'], amp_2x: ['Вибрация: центровка', 'pulse-outline'],
+  hf_noise: ['Шум подшипника', 'volume-high-outline'], t_bearing: ['Температура подшипника', 'thermometer-outline'],
+  t_winding: ['Температура двигателя', 'thermometer-outline'],
+};
 
-// Классы по статусу. Строки написаны целиком, чтобы Tailwind их нашёл при сборке.
+// Статус: цвет, слово и иконка вместе. Строки классов целиком, чтобы Tailwind их нашёл.
 const ST = {
-  ok: { text: 'text-ok', bg: 'bg-ok', soft: 'bg-ok-bg', border: 'border-ok', borderL: 'border-l-ok' },
-  check: { text: 'text-check', bg: 'bg-check', soft: 'bg-check-bg', border: 'border-check', borderL: 'border-l-check' },
-  defect: { text: 'text-defect', bg: 'bg-defect', soft: 'bg-defect-bg', border: 'border-defect', borderL: 'border-l-defect' },
-  primary: { text: 'text-primary', bg: 'bg-primary', soft: 'bg-primary-soft', border: 'border-primary', borderL: 'border-l-primary' },
+  ok: { text: 'text-ok', bg: 'bg-ok', soft: 'bg-ok-bg', border: 'border-ok', word: 'Норма', icon: 'checkmark-circle', color: C.ok },
+  check: { text: 'text-check', bg: 'bg-check', soft: 'bg-check-bg', border: 'border-check', word: 'Проверить', icon: 'alert-circle', color: C.check },
+  defect: { text: 'text-defect', bg: 'bg-defect', soft: 'bg-defect-bg', border: 'border-defect', word: 'Дефект', icon: 'close-circle', color: C.defect },
 };
-const NONE = { text: 'text-muted', bg: 'bg-muted', soft: 'bg-sunken', border: 'border-line', borderL: 'border-l-line' };
-const st = (status) => ST[status] || NONE;
+const st = (status) => ST[status] || ST.ok;
 
-// Типографика: основной текст не меньше 16.
+// Три размера текста.
 const T = {
-  h1: 'text-[22px] font-bold text-fg',
-  h2: 'text-[18px] font-bold text-fg',
-  h3: 'text-[17px] font-semibold text-fg',
-  body: 'text-[16px] leading-[23px] text-fg',
-  muted: 'text-[16px] leading-[23px] text-muted',
-  small: 'text-[14px] leading-[20px] text-muted',
-  faint: 'text-[13px] leading-[18px] text-faint',
+  title: 'text-[24px] leading-[30px] font-semibold text-fg',
+  body: 'text-[17px] leading-[24px] text-fg',
+  bodyB: 'text-[17px] leading-[24px] font-semibold text-fg',
+  cap: 'text-[14px] leading-[20px] text-muted',
 };
-const BETWEEN = 'flex-row items-center justify-between gap-3';
-const CARD = 'bg-surface rounded-2xl p-4 gap-3 border border-divider';
-const INPUT = 'border border-line rounded-xl p-3 text-[16px] text-fg bg-surface';
+const CARD = 'bg-surface rounded-xl border border-divider p-4 gap-4';
 
-const TOP = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 50;
+const TOP = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : Platform.OS === 'web' ? 0 : 47;
 const BOTTOM = (() => {
   if (Platform.OS === 'ios') return 24;
+  if (Platform.OS === 'web') return 8;
   const scr = Dimensions.get('screen').height;
   const win = Dimensions.get('window').height;
   const nav = scr - win - (StatusBar.currentHeight || 0);
-  return Math.max(20, Math.min(nav, 56));
+  return Math.max(16, Math.min(nav, 56));
 })();
 
 async function load(key, fallback) {
@@ -63,101 +75,141 @@ async function load(key, fallback) {
 }
 function save(key, value) { AsyncStorage.setItem(key, JSON.stringify(value)).catch(() => {}); }
 
-// Порядок находок: сначала комбинированные выводы, затем дефекты, затем «проверить».
 const sortFindings = (list) => [...list].sort((a, b) =>
   (b.combined ? 1 : 0) - (a.combined ? 1 : 0) || RANK[b.status] - RANK[a.status]);
-// Короткий текст ресурса для строки узла.
-const shortRes = (res) => (res.kind === 'calc' ? (res.rem <= 0 ? 'ресурс исчерпан' : `ост. ${num(res.rem, 0)} ч`) : res.kind === 'nodata' ? 'нет данных' : 'по состоянию');
+const worst = (list) => list.reduce((m, f) => (RANK[f.status] > RANK[m] ? f.status : m), 'ok');
+const uniq = (arr) => [...new Set(arr)];
+const resText = (res) => (res.kind === 'calc' ? (res.rem <= 0 ? 'Ресурс исчерпан' : `Осталось ${num(res.rem, 0)} ч`) : res.kind === 'nodata' ? 'Нет данных о наработке' : 'Обслуживание по состоянию');
+const resShort = (res) => (res.kind === 'calc' ? resText(res) : res.kind === 'nodata' ? 'Нет данных' : 'Без норматива');
+const reasonOf = (b) => (b.findings[0] ? b.findings[0].label.replace(/^(Пред|Тревога):\s*/, '') : resText(b.res));
 
-/* ---------- мелкие элементы ---------- */
-function Pill({ status, text, big }) {
+/* ---------- базовые элементы ---------- */
+function Status({ status, big }) {
   const c = st(status);
   return (
-    <View className={`flex-row items-center gap-1.5 rounded-full ${big ? 'px-3.5 py-1.5' : 'px-2.5 py-1'} ${c.soft}`}>
-      <View className={`w-2 h-2 rounded-full ${c.bg}`} />
-      <Text className={`font-bold ${big ? 'text-[16px]' : 'text-[14px]'} ${c.text}`}>{text || STATUS_SHORT[status]}</Text>
+    <View className={`flex-row items-center self-start gap-1.5 rounded-full ${big ? 'px-3 py-1.5' : 'px-2.5 py-1'} ${c.soft}`}>
+      <Ionicons name={c.icon} size={big ? 20 : 16} color={c.color} />
+      <Text className={`text-[14px] font-semibold ${c.text}`}>{c.word}</Text>
     </View>
   );
 }
-const Dot = ({ status }) => <View className={`w-3 h-3 rounded-full ${st(status).bg}`} />;
-
-const BTN = {
-  primary: { box: 'bg-primary border-primary min-h-[56px]', text: 'text-white text-[17px]', icon: '#fff' },
-  secondary: { box: 'bg-surface border-line', text: 'text-fg', icon: C.fg },
-  danger: { box: 'bg-surface border-defect', text: 'text-defect', icon: C.defect },
-  dark: { box: 'bg-white/15 border-white/35', text: 'text-white', icon: '#fff' },
-};
-function Btn({ title, icon, onPress, kind = 'secondary', disabled, className = '' }) {
-  const k = BTN[kind] || BTN.secondary;
+function Primary({ title, icon, onPress, disabled }) {
   return (
-    <Pressable onPress={onPress} disabled={disabled}
-      className={`min-h-[50px] px-4 py-2.5 rounded-xl border items-center justify-center active:opacity-80 ${k.box} ${disabled ? 'opacity-[0.45]' : ''} ${className}`}>
-      <View className="flex-row items-center gap-2">
-        {!!icon && <Ionicons name={icon} size={22} color={k.icon} />}
-        <Text className={`font-semibold text-center text-[16px] ${k.text}`}>{title}</Text>
-      </View>
+    <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button"
+      className={`h-14 rounded-xl bg-primary flex-row items-center justify-center gap-2 active:opacity-85 ${disabled ? 'opacity-50' : ''}`}>
+      {!!icon && <Ionicons name={icon} size={24} color="#fff" />}
+      <Text className="text-[17px] font-semibold text-white">{title}</Text>
+    </Pressable>
+  );
+}
+function Secondary({ title, icon, onPress, danger, className = '' }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button"
+      className={`h-12 px-4 rounded-xl border bg-surface flex-row items-center justify-center gap-2 active:opacity-70 ${danger ? 'border-defect' : 'border-line'} ${className}`}>
+      {!!icon && <Ionicons name={icon} size={20} color={danger ? C.defect : C.primary} />}
+      <Text className={`text-[17px] font-semibold ${danger ? 'text-defect' : 'text-primary'}`}>{title}</Text>
+    </Pressable>
+  );
+}
+function Link({ title, icon, onPress, center }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={4} accessibilityRole="link"
+      className={`min-h-[48px] flex-row items-center gap-1.5 active:opacity-60 ${center ? 'self-center' : 'self-start'}`}>
+      {!!icon && <Ionicons name={icon} size={20} color={C.primary} />}
+      <Text className="text-[17px] text-primary underline">{title}</Text>
     </Pressable>
   );
 }
 function Chip({ title, active, onPress }) {
   return (
     <Pressable onPress={onPress}
-      className={`border rounded-full px-3.5 py-2.5 active:opacity-80 ${active ? 'bg-primary border-primary' : 'bg-surface border-line'}`}>
-      <Text className={`text-[15px] ${active ? 'text-white font-semibold' : 'text-fg'}`}>{title}</Text>
+      className={`min-h-[48px] justify-center border rounded-xl px-4 active:opacity-80 ${active ? 'bg-primary border-primary' : 'bg-surface border-line'}`}>
+      <Text className={`text-[17px] ${active ? 'text-white font-semibold' : 'text-fg'}`}>{title}</Text>
     </Pressable>
   );
 }
-function Link({ title, icon, onPress, className = '' }) {
+// Строка списка: иконка в кружке цвета статуса, заголовок, подпись, стрелка.
+function Row({ icon, status, title, sub, right, onPress, last }) {
+  const c = status ? st(status) : null;
   return (
-    <Pressable onPress={onPress} hitSlop={8} className={`flex-row items-center gap-1.5 py-2 active:opacity-60 ${className}`}>
-      {!!icon && <Ionicons name={icon} size={18} color={C.primary} />}
-      <Text className="text-[16px] text-primary font-semibold">{title}</Text>
-    </Pressable>
-  );
-}
-// Строка списка: точка статуса, заголовок, подпись, справа значение и стрелка.
-function Row({ status, title, sub, right, onPress, last }) {
-  return (
-    <Pressable onPress={onPress} disabled={!onPress}
-      className={`flex-row items-center gap-3 py-3.5 active:opacity-60 ${last ? '' : 'border-b border-divider'}`}>
-      {status !== undefined && <Dot status={status} />}
+    <Pressable onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? 'button' : undefined}
+      className={`flex-row items-center gap-3 min-h-[64px] py-3 active:opacity-60 ${last ? '' : 'border-b border-divider'}`}>
+      {!!icon && (
+        <View className={`w-10 h-10 rounded-full items-center justify-center ${c ? c.soft : 'bg-sunken'}`}>
+          <Ionicons name={icon} size={22} color={c ? c.color : C.primary} />
+        </View>
+      )}
       <View className="flex-1 gap-0.5">
-        <Text className={T.h3} numberOfLines={2}>{title}</Text>
-        {!!sub && <Text className={T.small} numberOfLines={2}>{sub}</Text>}
+        <Text className={T.bodyB} numberOfLines={2}>{title}</Text>
+        {!!sub && <Text className={T.cap} numberOfLines={2}>{sub}</Text>}
       </View>
       {right}
-      {!!onPress && <Ionicons name="chevron-forward" size={20} color={C.faint} />}
+      {!!onPress && <Ionicons name="chevron-forward" size={22} color={C.muted} />}
     </Pressable>
   );
 }
-const KV = ({ k, v, last }) => (
-  <View className={`flex-row gap-3 py-2.5 ${last ? '' : 'border-b border-divider'}`}>
-    <Text className="flex-1 text-[15px] leading-[21px] text-muted">{k}</Text>
-    <Text className="flex-[1.3] text-[15px] leading-[21px] text-fg text-right">{v}</Text>
+const Section = ({ title, children, right }) => (
+  <View className="gap-2">
+    <View className="flex-row items-center justify-between px-1">
+      <Text className="text-[14px] leading-[20px] font-semibold text-muted uppercase tracking-[0.5px]">{title}</Text>
+      {right}
+    </View>
+    <View className="bg-surface rounded-xl border border-divider px-4">{children}</View>
   </View>
 );
-function Expand({ title, children, open: initial = false }) {
-  const [open, setOpen] = useState(initial);
+const KV = ({ k, v, last }) => (
+  <View className={`flex-row gap-3 py-3 ${last ? '' : 'border-b border-divider'}`}>
+    <Text className={`${T.cap} flex-1`}>{k}</Text>
+    <Text className="flex-[1.3] text-[17px] leading-[24px] text-fg text-right">{v}</Text>
+  </View>
+);
+function Expand({ title, children }) {
+  const [open, setOpen] = useState(false);
   return (
     <View>
-      <Pressable onPress={() => setOpen(!open)} hitSlop={6} className="flex-row items-center gap-1.5 py-2 active:opacity-60">
-        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={C.primary} />
-        <Text className="text-[16px] text-primary font-semibold">{title}</Text>
+      <Pressable onPress={() => setOpen(!open)} className="min-h-[48px] flex-row items-center gap-2 active:opacity-60">
+        <Text className="text-[17px] text-primary font-semibold flex-1">{title}</Text>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={22} color={C.primary} />
       </Pressable>
-      {open && <View className="gap-2 pt-1">{children}</View>}
+      {open && <View className="gap-3 pt-1 pb-2">{children}</View>}
     </View>
   );
 }
+// Нумерованные шаги «что сделать».
+function Steps({ items, onPress }) {
+  return (
+    <View className="gap-3">
+      {items.map((s, i) => (
+        <Pressable key={i} onPress={onPress ? () => onPress(s) : undefined} disabled={!onPress} className="flex-row gap-3 active:opacity-60">
+          <View className="w-7 h-7 rounded-full bg-primary items-center justify-center mt-0.5">
+            <Text className="text-[14px] font-semibold text-white">{i + 1}</Text>
+          </View>
+          <Text className={`${T.body} flex-1`}>{s.text}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+const Empty = ({ icon, text, children }) => (
+  <View className="items-center gap-3 py-8 px-4">
+    <View className="w-16 h-16 rounded-full bg-sunken items-center justify-center">
+      <Ionicons name={icon} size={32} color={C.primary} />
+    </View>
+    <Text className={`${T.body} text-center`}>{text}</Text>
+    {children}
+  </View>
+);
 
 function ResBar({ res }) {
-  if (res.kind !== 'calc') return <Text className={T.small}>{res.text}</Text>;
+  if (res.kind !== 'calc') return <Text className={T.body}>{resText(res)}</Text>;
   const c = st(res.status);
   return (
-    <View className="gap-1.5">
-      <View className="h-2.5 rounded-[5px] bg-sunken overflow-hidden">
-        <View className={`h-full rounded-[5px] ${c.bg}`} style={{ width: `${Math.max(2, res.pct)}%` }} />
+    <View className="gap-2">
+      <Text className={T.body}>{resText(res)}</Text>
+      <View className="h-3 rounded-full bg-sunken overflow-hidden">
+        <View className={`h-full rounded-full ${c.bg}`} style={{ width: `${Math.max(3, res.pct)}%` }} />
       </View>
-      <Text className={`text-[15px] font-semibold ${c.text}`}>{res.text}</Text>
+      <Text className={T.cap}>Использовано {num(res.pct, 0)} % срока</Text>
     </View>
   );
 }
@@ -188,7 +240,7 @@ function PhotoStage({ photo, vis, model, busy, onPick }) {
       add(n.box, b.status, b.c.name, n.comp, 'n' + i);
     });
   }
-  const LABEL_H = 22;
+  const LABEL_H = 24;
   return (
     <View className="w-full bg-sunken rounded-xl overflow-hidden" style={{ aspectRatio: ratio }}
       onLayout={(e) => setW(e.nativeEvent.layout.width)}>
@@ -200,20 +252,20 @@ function PhotoStage({ photo, vis, model, busy, onPick }) {
         const maxW = rightSide ? (b.x + b.w) * W - 4 : (1 - b.x) * W - 4;
         const c = st(b.status);
         return (
-          <Pressable key={b.key} onPress={() => onPick(b.comp)} hitSlop={4}
+          <Pressable key={b.key} onPress={() => onPick(b.comp)} hitSlop={6}
             className={`absolute border-[3px] rounded ${c.border} ${b.status === 'ok' ? 'border-dashed' : 'border-solid'}`}
             style={{ left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.w * 100}%`, height: `${b.h * 100}%` }}>
-            <View className={`absolute h-[22px] justify-center px-1.5 rounded ${c.bg}`}
+            <View className={`absolute h-6 justify-center px-2 rounded ${c.bg}`}
               style={{ maxWidth: Math.max(60, maxW), top: inside ? 0 : -LABEL_H - 1, [rightSide ? 'right' : 'left']: -3 }}>
-              <Text numberOfLines={1} className="text-white text-[12px] font-bold">{b.label}</Text>
+              <Text numberOfLines={1} className="text-white text-[14px] font-semibold">{b.label}</Text>
             </View>
           </Pressable>
         );
       })}
       {busy && (
-        <View className="absolute inset-0 bg-[#081822]/55 items-center justify-center gap-2.5">
+        <View className="absolute inset-0 bg-[#081822]/60 items-center justify-center gap-3">
           <ActivityIndicator color="#fff" size="large" />
-          <Text className="text-white text-[16px] font-semibold">ИИ анализирует фото…</Text>
+          <Text className="text-white text-[17px] font-semibold">ИИ проверяет фото…</Text>
         </View>
       )}
     </View>
@@ -226,17 +278,17 @@ function Spark({ param, rule, idx }) {
   const from = Math.max(0, idx - 95);
   const seg = arr.slice(from, idx + 1);
   const top = Math.max(rule.alarm * 1.15, Math.max(...seg) * 1.05);
-  const H = 64;
+  const H = 72;
   return (
-    <View className="mt-1" style={{ height: H }}>
+    <View style={{ height: H }}>
       <View className="flex-row items-end gap-px" style={{ height: H }}>
         {seg.map((v, i) => (
           <View key={i} className={`flex-1 rounded-t-[1px] ${v > rule.alarm ? 'bg-defect' : v > rule.warn ? 'bg-check' : 'bg-[#7fa9bb]'}`}
             style={{ height: Math.max(1, (v / top) * H) }} />
         ))}
       </View>
-      <View className="absolute left-0 right-0 border-t-[1.5px] border-dashed border-check" style={{ bottom: (rule.warn / top) * H }} />
-      <View className="absolute left-0 right-0 border-t-[1.5px] border-dashed border-defect" style={{ bottom: (rule.alarm / top) * H }} />
+      <View className="absolute left-0 right-0 border-t-2 border-dashed border-check" style={{ bottom: (rule.warn / top) * H }} />
+      <View className="absolute left-0 right-0 border-t-2 border-dashed border-defect" style={{ bottom: (rule.alarm / top) * H }} />
     </View>
   );
 }
@@ -254,12 +306,12 @@ function CameraScreen({ mode, hints, onPhoto, onQr, onClose }) {
   if (!perm) return <View className={wrap}><ActivityIndicator color="#fff" /></View>;
   if (!perm.granted) {
     return (
-      <View className={`${wrap} p-6 gap-3`}>
-        <Text className="text-white text-[16px] text-center mb-2">
-          Нет доступа к камере. Разрешите его, чтобы снимать узлы и сканировать QR-коды.
-        </Text>
-        <Btn title="Разрешить камеру" kind="primary" onPress={requestPerm} className="self-stretch" />
-        <Btn title="Назад" onPress={onClose} className="self-stretch" />
+      <View className={`${wrap} p-6 gap-4`}>
+        <Text className="text-white text-[17px] text-center">Нет доступа к камере. Разрешите его, чтобы снимать узлы и сканировать QR-коды.</Text>
+        <View className="self-stretch gap-3">
+          <Primary title="Разрешить камеру" onPress={requestPerm} />
+          <Secondary title="Назад" onPress={onClose} />
+        </View>
       </View>
     );
   }
@@ -276,26 +328,23 @@ function CameraScreen({ mode, hints, onPhoto, onQr, onClose }) {
       <CameraView ref={cam} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} facing="back" onCameraReady={() => setReady(true)}
         barcodeScannerSettings={mode === 'qr' ? { barcodeTypes: ['qr'] } : undefined}
         onBarcodeScanned={mode === 'qr' ? (e) => { if (!scanned.current) { scanned.current = true; onQr(String(e.data || '')); } } : undefined} />
-      {mode === 'qr' && <View className="w-60 h-60 border-[3px] border-white rounded-[20px]" pointerEvents="none" />}
-      <View className="absolute top-0 left-0 right-0 px-4 pb-3.5 gap-1.5 bg-black/50" style={{ paddingTop: TOP + 10 }}>
-        <Text className="text-white text-[18px] font-bold">{mode === 'qr' ? 'Наведите камеру на QR-код агрегата' : 'Наведите камеру на узел'}</Text>
-        {mode !== 'qr' && hints.length > 0 && <Text className="text-white text-[15px] opacity-80">В первую очередь:</Text>}
-        {mode !== 'qr' && hints.map((h) => (
-          <View key={h.id} className={`border-l-4 pl-2.5 py-0.5 ${st(h.status).borderL}`}>
-            <Text className="text-white text-[16px] font-semibold">{h.name}</Text>
-          </View>
-        ))}
+      {mode === 'qr' && <View className="w-60 h-60 border-[3px] border-white rounded-xl" pointerEvents="none" />}
+      <View className="absolute top-0 left-0 right-0 px-4 pb-4 gap-2 bg-black/60" style={{ paddingTop: TOP + 16 }}>
+        <Text className="text-white text-[24px] font-semibold">{mode === 'qr' ? 'Наведите на QR-код' : 'Наведите на узел'}</Text>
+        {mode !== 'qr' && hints.length > 0 && <Text className="text-white text-[17px]">Сначала: {hints.join(', ')}</Text>}
       </View>
-      <View className="absolute bottom-0 left-0 right-0 flex-row items-center justify-between px-5 pt-5 bg-black/50"
+      <View className="absolute bottom-0 left-0 right-0 flex-row items-center justify-between px-6 pt-6 bg-black/60"
         style={{ paddingBottom: BOTTOM + 16 }}>
-        <Btn title="Назад" kind="dark" onPress={onClose} className="w-24" />
+        <Pressable onPress={onClose} className="w-20 h-12 items-center justify-center rounded-xl border border-white/50 active:opacity-70">
+          <Text className="text-white text-[17px] font-semibold">Назад</Text>
+        </Pressable>
         {mode !== 'qr' ? (
-          <Pressable onPress={shoot} disabled={!ready || busy}
-            className={`w-[76px] h-[76px] rounded-full border-4 border-white items-center justify-center ${!ready || busy ? 'opacity-50' : ''}`}>
-            <View className="w-[58px] h-[58px] rounded-full bg-white" />
+          <Pressable onPress={shoot} disabled={!ready || busy} accessibilityLabel="Сделать снимок"
+            className={`w-20 h-20 rounded-full border-4 border-white items-center justify-center ${!ready || busy ? 'opacity-50' : ''}`}>
+            <View className="w-16 h-16 rounded-full bg-white" />
           </Pressable>
         ) : <View />}
-        <View className="w-24" />
+        <View className="w-20" />
       </View>
     </View>
   );
@@ -306,18 +355,18 @@ function Sheet({ visible, onClose, title, head, children, footer }) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <View className="flex-1 bg-[#050c12]/50">
-        <Pressable className="flex-1" onPress={onClose} />
+        <Pressable className="flex-1" onPress={onClose} accessibilityLabel="Закрыть окно" />
         {visible && (
-          <View className="bg-surface rounded-t-3xl px-4 pt-2 gap-3 max-h-[90%]" style={{ paddingBottom: BOTTOM + 8 }}>
-            <View className="self-center w-10 h-[5px] rounded-[3px] bg-line" />
+          <View className="bg-bg rounded-t-2xl px-4 pt-2 gap-4 max-h-[92%]" style={{ paddingBottom: BOTTOM + 8 }}>
+            <View className="self-center w-10 h-1 rounded-full bg-line" />
             <View className="flex-row items-start gap-3">
-              {head || <Text className={`${T.h1} flex-1`}>{title}</Text>}
-              <Pressable onPress={onClose} hitSlop={12} accessibilityLabel="Закрыть"
-                className="w-10 h-10 rounded-full bg-bg items-center justify-center active:opacity-75">
-                <Ionicons name="close" size={22} color={C.fg} />
+              {head || <Text className={`${T.title} flex-1`}>{title}</Text>}
+              <Pressable onPress={onClose} hitSlop={8} accessibilityLabel="Закрыть"
+                className="w-12 h-12 rounded-full bg-surface border border-divider items-center justify-center active:opacity-70">
+                <Ionicons name="close" size={24} color={C.fg} />
               </Pressable>
             </View>
-            <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-3 pb-2">{children}</ScrollView>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-4 pb-2">{children}</ScrollView>
             {footer}
           </View>
         )}
@@ -335,12 +384,13 @@ export default function App() {
   const [vis, setVis] = useState(null);
   const [manual, setManual] = useState([]);
   const [busy, setBusy] = useState(false);
-  const [ai, setAi] = useState(null); // {kind: 'info' | 'noapi' | 'error', text}
+  const [ai, setAi] = useState(null); // {kind: 'noapi' | 'error', text}
   const [toast, setToast] = useState('');
   const [history, setHistory] = useState([]);
   const [compState, setCompState] = useState({});
   const [apiUrl, setApiUrl] = useState('');
-  const [demo, setDemo] = useState(false); // режим демонстрации: примеры фото, сценарии датчиков, технические детали
+  const [demo, setDemo] = useState(false); // режим демонстрации: примеры фото, сценарии датчиков
+  const [tips, setTips] = useState(true);  // подсказка-шаги для новичка
   const [camMode, setCamMode] = useState(null); // null | 'photo' | 'qr'
   const [sheet, setSheet] = useState(null); // id узла
   const [note, setNote] = useState('');
@@ -369,9 +419,10 @@ export default function App() {
       if (Number.isInteger(ui.idx)) setIdx(Math.max(0, Math.min(499, ui.idx)));
       if (typeof ui.apiUrl === 'string') setApiUrl(ui.apiUrl);
       if (typeof ui.demo === 'boolean') setDemo(ui.demo);
+      if (typeof ui.tips === 'boolean') setTips(ui.tips);
     })();
   }, []);
-  useEffect(() => { save('obh.ui', { unitId, idx, apiUrl, demo }); }, [unitId, idx, apiUrl, demo]);
+  useEffect(() => { save('obh.ui', { unitId, idx, apiUrl, demo, tips }); }, [unitId, idx, apiUrl, demo, tips]);
 
   const unit = UNITS.find((u) => u.id === unitId);
   const classes = useMemo(() => [
@@ -379,10 +430,10 @@ export default function App() {
     ...manual.map((cls) => ({ cls, confidence: null, explanation: 'Отмечено инженером вручную.' })),
   ], [vis, manual]);
   const model = useMemo(() => buildModel(unit, idx, classes, compState), [unit, idx, classes, compState]);
-  const attention = Object.values(model.byComp)
-    .filter((b) => b.status !== 'ok')
-    .sort((a, b) => RANK[b.status] - RANK[a.status]);
+  const attention = Object.values(model.byComp).filter((b) => b.status !== 'ok').sort((a, b) => RANK[b.status] - RANK[a.status]);
   const findings = sortFindings(model.findings);
+  // Для результата осмотра берём только то, что видно на фото (в том числе подтверждённое датчиками).
+  const photoFindings = findings.filter((f) => f.src.includes('камера'));
 
   const flash = (text) => {
     setToast(text);
@@ -391,12 +442,12 @@ export default function App() {
   };
   const resetPhoto = () => { run.current++; setPhoto(null); setVis(null); setManual([]); setAi(null); setBusy(false); setShowManual(false); };
   const chooseUnit = (id, msg) => { setUnitId(id); resetPhoto(); setShowUnits(false); setOpenSensor(null); if (msg) flash(msg); };
+  const toTop = () => scroll.current?.scrollTo({ y: 0, animated: false });
 
   // Анализ фото через сервис команды. Если сервиса нет, понятно сообщаем об этом.
   const analyze = async (p) => {
     const my = ++run.current;
-    setPhoto(p); setVis(null); setManual([]); setAi(null); setShowManual(false);
-    scroll.current?.scrollTo({ y: 0, animated: false });
+    setPhoto(p); setVis(null); setManual([]); setAi(null); setShowManual(false); setTab('inspect'); toTop();
     const url = apiUrl.trim().replace(/\/+$/, '');
     if (!url) { setAi({ kind: 'noapi', text: 'Сервис анализа фото не подключён. Укажите его адрес в профиле.' }); return; }
     setBusy(true);
@@ -411,10 +462,9 @@ export default function App() {
       const v = cleanVision(await res.json(), unit);
       if (my !== run.current) return;
       setVis(v);
-      setAi(null);
     } catch (e) {
       if (my !== run.current) return;
-      setAi({ kind: 'error', text: 'Сервис анализа не ответил. Проверьте адрес в профиле и подключение к сети.' });
+      setAi({ kind: 'error', text: 'Сервис анализа не ответил. Проверьте адрес в профиле и интернет.' });
     } finally {
       clearTimeout(timer);
       if (my === run.current) setBusy(false);
@@ -426,26 +476,22 @@ export default function App() {
       if (r.canceled || !r.assets || !r.assets[0]) return;
       const a = r.assets[0];
       analyze({ uri: a.uri, width: a.width, height: a.height });
-    } catch (e) { flash('Не удалось открыть галерею.'); }
+    } catch (e) { flash('Не удалось открыть галерею'); }
   };
   const pickSample = (smp) => {
     // Пример из кейса: готовая разметка, сервис не вызывается.
     run.current++; setBusy(false); setManual([]); setShowManual(false); setAi(null);
     setPhoto({ source: smp.source, width: smp.width, height: smp.height });
-    setVis(smp.preset);
-    scroll.current?.scrollTo({ y: 0, animated: false });
+    setVis(smp.preset); setTab('inspect'); toTop();
   };
   const onQr = (data) => {
     setCamMode(null);
     const u = UNITS.find((x) => x.qr === data.trim());
-    if (u) chooseUnit(u.id, 'Агрегат определён по QR-коду');
-    else flash('Такого агрегата нет в базе. Выберите его из списка.');
+    if (u) chooseUnit(u.id, `Агрегат: ${SHORT[u.id] || u.id}`);
+    else flash('Такого агрегата нет в базе');
   };
   const who = () => (user ? { name: user.name, role: user.role, login: user.login } : null);
-  const pushHistory = (entry) => {
-    const h = [entry, ...history].slice(0, 300);
-    setHistory(h); save('obh.history', h);
-  };
+  const pushHistory = (entry) => { const h = [entry, ...history].slice(0, 300); setHistory(h); save('obh.history', h); };
   // Отметка по узлу: проверено, дефект или замена.
   const record = (action) => {
     const b = model.byComp[sheet];
@@ -466,14 +512,14 @@ export default function App() {
   // Итог осмотра по фото в журнал.
   const saveInspection = () => {
     pushHistory({
-      unit: unit.id, comp: null, compName: 'Осмотр по фото', action: 'inspection', note: '', status: model.overall,
-      user: who(), findings: findings.map((f) => f.label).join('; '), ts: Date.now(),
+      unit: unit.id, comp: null, compName: 'Осмотр по фото', action: 'inspection', note: '', status: worst(photoFindings),
+      user: who(), findings: photoFindings.map((f) => f.label).join('; '), ts: Date.now(),
     });
     resetPhoto();
-    flash('Осмотр сохранён в журнал');
+    flash('Сохранено в журнал');
   };
   const closeSheet = () => { setSheet(null); setNote(''); setShowNote(false); };
-  const switchTab = (id) => { setTab(id); scroll.current?.scrollTo({ y: 0, animated: false }); };
+  const switchTab = (id) => { setTab(id); toTop(); };
   const closeProfile = () => { setShowProfile(false); setConfirmLogout(false); };
   const doLogout = async () => {
     await logout();
@@ -486,98 +532,137 @@ export default function App() {
   if (camMode) {
     return (
       <CameraScreen mode={camMode} onClose={() => setCamMode(null)} onQr={onQr}
-        hints={attention.slice(0, 3).map((b) => ({ id: b.c.id, name: b.c.name, status: b.status }))}
+        hints={attention.slice(0, 2).map((b) => b.c.name)}
         onPhoto={(p) => { setCamMode(null); analyze(p); }} />
     );
   }
 
-  const top = findings[0];
   const ov = st(model.overall);
 
-  /* ----- Осмотр: до фото ----- */
+  /* ----- Осмотр: стартовый экран ----- */
+  const first = attention[0];
   const inspectStart = (
     <>
       <View className={CARD}>
-        <Text className={T.small}>Агрегат</Text>
-        <Text className={T.h1}>{unit.name}</Text>
-        <View className={BETWEEN}>
-          <Pill status={model.overall} big />
-          <Link title="Сменить" icon="swap-horizontal" onPress={() => setShowUnits(true)} />
+        <View className="gap-2">
+          <Text className={T.title}>{unit.name}</Text>
+          <Status status={model.overall} big />
         </View>
+        <Text className={T.body}>
+          {first
+            ? <>Требуют внимания: {attention.length}. Начните с узла <Text className="font-semibold">«{first.c.name}»</Text>.</>
+            : 'Все узлы в норме. Сделайте обзорное фото агрегата.'}
+        </Text>
+        <Secondary title="Сменить агрегат" icon="swap-horizontal" onPress={() => setShowUnits(true)} />
       </View>
-      {attention.length > 0 && (
+
+      {tips && (
         <View className={CARD}>
-          <Text className={T.h2}>Сначала проверьте</Text>
-          <View>
-            {attention.slice(0, 3).map((b, i, a) => (
-              <Row key={b.c.id} status={b.status} title={b.c.name} onPress={() => setSheet(b.c.id)} last={i === a.length - 1} />
-            ))}
-          </View>
+          <Text className={T.bodyB}>Как пройти осмотр</Text>
+          <Steps items={[
+            { text: 'Сфотографируйте узел кнопкой внизу.' },
+            { text: 'Посмотрите, что нашёл ИИ, и что нужно сделать.' },
+            { text: 'Сохраните результат в журнал.' },
+          ]} />
+          <Link title="Понятно, скрыть" onPress={() => setTips(false)} />
         </View>
       )}
+
+      {attention.length > 0 && (
+        <Section title="Требуют внимания">
+          {attention.map((b, i) => (
+            <Row key={b.c.id} icon={COMP_ICON[b.c.id] || 'hardware-chip-outline'} status={b.status} title={b.c.name}
+              sub={`${st(b.status).word}: ${reasonOf(b)}`} onPress={() => setSheet(b.c.id)} last={i === attention.length - 1} />
+          ))}
+        </Section>
+      )}
+
       {demo && (
-        <View className={CARD}>
-          <Text className={T.h2}>Примеры фото из кейса</Text>
-          <View className="flex-row flex-wrap gap-2">
-            {SAMPLES.map((x) => <Chip key={x.key} title={x.label} onPress={() => pickSample(x)} />)}
-          </View>
-        </View>
+        <Section title="Режим демонстрации: примеры фото">
+          {SAMPLES.map((x, i) => (
+            <Row key={x.key} icon="images-outline" title={x.label} sub="Готовая разметка из кейса" onPress={() => pickSample(x)} last={i === SAMPLES.length - 1} />
+          ))}
+        </Section>
       )}
     </>
   );
 
   /* ----- Осмотр: результат по фото ----- */
+  const vStatus = worst(photoFindings);
+  const vc = st(vStatus);
+  const steps = uniq(photoFindings.map((f) => f.action)).slice(0, 3).map((text) => ({ text, comp: photoFindings.find((f) => f.action === text).comp }));
+  const sensorOnly = findings.filter((f) => !f.src.includes('камера'));
   const inspectResult = photo && (
     <>
-      <View className={`rounded-2xl p-4 gap-1.5 ${ov.soft}`}>
-        <Text className={`text-[24px] font-bold ${ov.text}`}>{busy ? 'Анализ…' : STATUS_SHORT[model.overall]}</Text>
-        {!busy && <Text className={T.body} numberOfLines={3}>{top ? top.action : 'Замечаний нет. Продолжайте обход.'}</Text>}
-      </View>
-      <PhotoStage photo={photo} vis={vis} model={model} busy={busy} onPick={setSheet} />
-      {ai && (
-        <View className={`rounded-xl p-3 gap-1 ${ai.kind === 'noapi' ? 'bg-check-bg' : 'bg-defect-bg'}`}>
+      {busy ? (
+        <View className={`${CARD} flex-row items-center`}>
+          <ActivityIndicator color={C.primary} />
+          <Text className={T.body}>ИИ проверяет фото…</Text>
+        </View>
+      ) : ai ? (
+        <View className={`${CARD} bg-check-bg border-check`}>
+          <View className="flex-row items-center gap-2">
+            <Ionicons name="alert-circle" size={28} color={C.check} />
+            <Text className={`${T.title} text-check`}>Нет проверки ИИ</Text>
+          </View>
           <Text className={T.body}>{ai.text}</Text>
-          <Link title="Открыть профиль" onPress={() => setShowProfile(true)} />
+          <Secondary title="Открыть профиль" icon="person" onPress={() => setShowProfile(true)} />
+        </View>
+      ) : (
+        <View className={`rounded-xl p-4 gap-2 border ${vc.soft} ${vc.border}`}>
+          <View className="flex-row items-center gap-2">
+            <Ionicons name={vc.icon} size={32} color={vc.color} />
+            <Text className={`${T.title} ${vc.text}`}>{vc.word}</Text>
+          </View>
+          <Text className={T.body}>
+            {photoFindings.length ? `На фото найдено проблем: ${photoFindings.length}.` : 'На фото дефектов не видно.'}
+          </Text>
         </View>
       )}
-      {!busy && (
-        <View className={CARD}>
-          <Text className={T.h2}>{findings.length ? 'Найдено' : 'Ничего не найдено'}</Text>
-          {findings.length > 0 && (
-            <View>
-              {findings.map((f, i) => (
-                <Row key={f.id} status={f.status} title={f.label} onPress={() => setSheet(f.comp)} last={i === findings.length - 1}
-                  right={<Pill status={f.status} />} />
+
+      <PhotoStage photo={photo} vis={vis} model={model} busy={busy} onPick={setSheet} />
+
+      {!busy && !ai && (
+        <>
+          <View className={CARD}>
+            <Text className={T.bodyB}>Что сделать</Text>
+            {steps.length
+              ? <Steps items={steps} onPress={(s) => setSheet(s.comp)} />
+              : <Steps items={[{ text: 'Ничего срочного. Продолжайте обход.' }]} />}
+          </View>
+          {photoFindings.length > 0 && (
+            <Section title="Найдено на фото">
+              {photoFindings.map((f, i) => (
+                <Row key={f.id} icon={COMP_ICON[f.comp] || 'hardware-chip-outline'} status={f.status} title={f.label}
+                  sub={st(f.status).word} onPress={() => setSheet(f.comp)} last={i === photoFindings.length - 1} />
               ))}
+            </Section>
+          )}
+          {sensorOnly.length > 0 && (
+            <Text className={`${T.cap} px-1`}>По датчикам есть ещё замечания: смотрите вкладку «Оборудование».</Text>
+          )}
+          <Link center title={showManual ? 'Скрыть ручную правку' : 'ИИ ошибся? Исправить'} onPress={() => setShowManual(!showManual)} />
+          {showManual && (
+            <View className={CARD}>
+              <Text className={T.cap}>Отметьте то, что видите сами. Повторное нажатие снимает отметку.</Text>
+              {unit.comps.map((c) => {
+                const rules = RULES.visual_rules.filter((r) => RULE_COMP[r.id] === c.id);
+                if (!rules.length) return null;
+                return (
+                  <View key={c.id} className="gap-2">
+                    <Text className={T.bodyB}>{c.name}</Text>
+                    <View className="flex-row flex-wrap gap-2">
+                      {rules.map((r) => (
+                        <Chip key={r.id} title={r.name} active={manual.includes(r.class)}
+                          onPress={() => setManual(manual.includes(r.class) ? manual.filter((x) => x !== r.class) : [...manual, r.class])} />
+                      ))}
+                    </View>
+                  </View>
+                );
+              })}
             </View>
           )}
-          {!findings.length && <Text className={T.muted}>Видимых дефектов нет. Это ещё не подтверждает исправность.</Text>}
-        </View>
-      )}
-      {!busy && (
-        <View className="items-center">
-          <Link title={showManual ? 'Скрыть ручную правку' : 'ИИ ошибся? Исправить'} onPress={() => setShowManual(!showManual)} />
-        </View>
-      )}
-      {showManual && (
-        <View className={CARD}>
-          <Text className={T.small}>Отметьте то, что видите сами. Повторное нажатие снимает отметку.</Text>
-          {unit.comps.map((c) => {
-            const rules = RULES.visual_rules.filter((r) => RULE_COMP[r.id] === c.id);
-            if (!rules.length) return null;
-            return (
-              <View key={c.id} className="gap-1.5">
-                <Text className="text-[15px] font-bold text-muted">{c.name}</Text>
-                <View className="flex-row flex-wrap gap-2">
-                  {rules.map((r) => (
-                    <Chip key={r.id} title={r.name} active={manual.includes(r.class)}
-                      onPress={() => setManual(manual.includes(r.class) ? manual.filter((x) => x !== r.class) : [...manual, r.class])} />
-                  ))}
-                </View>
-              </View>
-            );
-          })}
-        </View>
+        </>
       )}
     </>
   );
@@ -588,7 +673,8 @@ export default function App() {
     const v = sensorsAt(idx)[r.param];
     const lvl = v > r.alarm ? 'defect' : v > r.warn ? 'check' : 'ok';
     const unitTxt = (r.column.match(/\((.+)\)/) || [])[1] || '';
-    return { r, v, lvl, unitTxt, name: r.column.replace(/\s*\(.+\)/, '') };
+    const [name, icon] = SENSOR_NAME[r.param] || [r.column, 'pulse-outline'];
+    return { r, v, lvl, unitTxt, name, icon };
   }) : [];
   const specRows = [['Модель', unit.model], ...unit.specs,
     ['Ввод в эксплуатацию', fmtDate(unit.commissioned)],
@@ -599,120 +685,111 @@ export default function App() {
   const unitTab = (
     <>
       <View className={CARD}>
-        <Text className={T.h1}>{unit.name}</Text>
-        <View className={BETWEEN}>
-          <Pill status={model.overall} big />
-          <Link title="Сменить" icon="swap-horizontal" onPress={() => setShowUnits(true)} />
+        <View className="gap-2">
+          <Text className={T.title}>{unit.name}</Text>
+          <Status status={model.overall} big />
         </View>
+        <Secondary title="Сменить агрегат" icon="swap-horizontal" onPress={() => setShowUnits(true)} />
       </View>
 
-      <View className={CARD}>
-        <Text className={T.h2}>Узлы</Text>
-        <View>
-          {comps.map((b, i) => (
-            <Row key={b.c.id} status={b.status} title={b.c.name} sub={shortRes(b.res)} onPress={() => setSheet(b.c.id)} last={i === comps.length - 1} />
-          ))}
-        </View>
-      </View>
+      <Section title="Узлы">
+        {comps.map((b, i) => (
+          <Row key={b.c.id} icon={COMP_ICON[b.c.id] || 'hardware-chip-outline'} status={b.status} title={b.c.name}
+            sub={`${st(b.status).word} · ${resShort(b.res)}`} onPress={() => setSheet(b.c.id)} last={i === comps.length - 1} />
+        ))}
+      </Section>
 
-      <View className={CARD}>
-        <View className={BETWEEN}>
-          <Text className={T.h2}>Датчики</Text>
-          {unit.sensors && <Text className={T.faint}>{fmtTs(sensorTime(idx))}</Text>}
-        </View>
-        {!unit.sensors && <Text className={T.muted}>Датчики к этому агрегату не подключены.</Text>}
-        {demo && unit.sensors && (
-          <View className="gap-2 bg-bg rounded-xl p-3">
-            <Text className={T.small}>Режим демонстрации: выберите ситуацию</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
-              {SCENARIOS.map(([t, i]) => <Chip key={t} title={t} active={idx === i} onPress={() => setIdx(i)} />)}
-            </ScrollView>
-            <View className="flex-row gap-2">
-              {[['−24 ч', -24], ['−1 ч', -1], ['+1 ч', 1], ['+24 ч', 24]].map(([t, d]) => (
-                <Btn key={t} title={t} className="flex-1 px-1 min-h-[44px]" onPress={() => setIdx(Math.max(0, Math.min(499, idx + d)))} />
-              ))}
+      <Section title="Датчики" right={unit.sensors ? <Text className={T.cap}>{fmtTs(sensorTime(idx))}</Text> : null}>
+        {!unit.sensors && <Empty icon="pulse-outline" text="Датчики к этому агрегату не подключены." />}
+        {sensorRows.map(({ r, v, lvl, unitTxt, name, icon }, i) => {
+          const open = openSensor === r.id;
+          const c = st(lvl);
+          return (
+            <View key={r.id} className={i === sensorRows.length - 1 ? '' : 'border-b border-divider'}>
+              <Pressable onPress={() => setOpenSensor(open ? null : r.id)} className="flex-row items-center gap-3 min-h-[64px] py-3 active:opacity-60">
+                <View className={`w-10 h-10 rounded-full items-center justify-center ${c.soft}`}>
+                  <Ionicons name={icon} size={22} color={c.color} />
+                </View>
+                <View className="flex-1 gap-0.5">
+                  <Text className={T.bodyB} numberOfLines={2}>{name}</Text>
+                  <Text className={`text-[14px] leading-[20px] font-semibold ${c.text}`}>{c.word}</Text>
+                </View>
+                <Text className={T.bodyB} style={{ fontVariant: ['tabular-nums'] }}>
+                  {num(v, r.param[0] === 't' ? 1 : 2)} <Text className="text-[14px] font-normal text-muted">{unitTxt}</Text>
+                </Text>
+                <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={22} color={C.muted} />
+              </Pressable>
+              {open && (
+                <View className="pb-4 gap-2">
+                  <Spark param={r.param} rule={r} idx={idx} />
+                  <Text className={T.cap}>Последние 96 часов. Жёлтая линия: внимание ({num(r.warn, 1)}), красная: опасно ({num(r.alarm, 1)}).</Text>
+                </View>
+              )}
             </View>
-          </View>
-        )}
-        <View>
-          {sensorRows.map(({ r, v, lvl, unitTxt, name }, i) => {
-            const open = openSensor === r.id;
-            return (
-              <View key={r.id} className={i === sensorRows.length - 1 ? '' : 'border-b border-divider'}>
-                <Pressable onPress={() => setOpenSensor(open ? null : r.id)} className="flex-row items-center gap-3 py-3.5 active:opacity-60">
-                  <Dot status={lvl} />
-                  <Text className={`${T.h3} flex-1`} numberOfLines={1}>{name}</Text>
-                  <Text className="text-[17px] font-bold text-fg" style={{ fontVariant: ['tabular-nums'] }}>
-                    {num(v, r.param[0] === 't' ? 1 : 2)} <Text className="text-[14px] font-normal text-muted">{unitTxt}</Text>
-                  </Text>
-                  <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={C.faint} />
-                </Pressable>
-                {open && (
-                  <View className="pb-3 gap-2">
-                    <Text className={`text-[15px] font-semibold ${st(lvl).text}`}>
-                      {lvl === 'ok' ? 'Норма' : lvl === 'check' ? r.warn_label.replace('Пред: ', '') : r.alarm_label.replace('Тревога: ', '')}
-                    </Text>
-                    <Spark param={r.param} rule={r} idx={idx} />
-                    <Text className={T.faint}>За 96 часов. Пунктир: порог {num(r.warn, 1)} и тревога {num(r.alarm, 1)} {unitTxt}</Text>
-                  </View>
-                )}
-              </View>
-            );
-          })}
-        </View>
-      </View>
+          );
+        })}
+      </Section>
 
-      <View className={CARD}>
-        <Expand title="Характеристики">
+      {demo && unit.sensors && (
+        <View className={CARD}>
+          <Text className={T.bodyB}>Режим демонстрации: ситуация на датчиках</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
+            {SCENARIOS.map(([t, i]) => <Chip key={t} title={t} active={idx === i} onPress={() => setIdx(i)} />)}
+          </ScrollView>
+          <View className="flex-row gap-2">
+            <Secondary title="−1 час" onPress={() => setIdx(Math.max(0, idx - 1))} className="flex-1" />
+            <Secondary title="+1 час" onPress={() => setIdx(Math.min(499, idx + 1))} className="flex-1" />
+          </View>
+        </View>
+      )}
+
+      <View className="bg-surface rounded-xl border border-divider px-4">
+        <Expand title="Характеристики агрегата">
           <View>{specRows.map(([k, v], i) => <KV key={k} k={k} v={v} last={i === specRows.length - 1} />)}</View>
-          <Text className={T.faint}>{unit.note}</Text>
+          <Text className={T.cap}>{unit.note}</Text>
         </Expand>
       </View>
     </>
   );
 
-  /* ----- История ----- */
-  const unitName = (id) => { const u = UNITS.find((x) => x.id === id); return u ? u.id : id; };
-  const historyTab = (
-    <View className={CARD}>
-      <Text className={T.h2}>Журнал</Text>
-      {history.length ? (
-        <View>
-          {history.map((h, i) => {
-            const key = h.ts + (h.comp || 'insp');
-            const open = openHist === key;
-            const status = h.action === 'inspection' ? h.status : ACTION_STATUS[h.action] || 'check';
-            const label = h.action === 'inspection' ? STATUS_SHORT[h.status] || 'Осмотр' : ACTIONS[h.action] || h.action;
-            return (
-              <View key={key} className={i === history.length - 1 ? '' : 'border-b border-divider'}>
-                <Pressable onPress={() => setOpenHist(open ? null : key)} className="flex-row items-center gap-3 py-3.5 active:opacity-60">
-                  <View className="flex-1 gap-0.5">
-                    <Text className={T.h3} numberOfLines={1}>{h.compName}</Text>
-                    <Text className={T.small} numberOfLines={1}>
-                      {fmtTs(h.ts)} · {unitName(h.unit)}{h.user && h.user.name ? ` · ${h.user.name}` : ''}
-                    </Text>
-                  </View>
-                  <Pill status={status} text={label} />
-                </Pressable>
-                {open && (
-                  <View className="pb-3 gap-1.5">
-                    {!!h.findings && <Text className={T.body}>{h.findings}</Text>}
-                    {!!h.note && <Text className={T.body}><Text className="font-bold">Заметка: </Text>{h.note}</Text>}
-                    {!!(h.user && h.user.role) && <Text className={T.small}>{h.user.name}, {h.user.role}</Text>}
-                    {!h.findings && !h.note && <Text className={T.small}>Замечаний не было.</Text>}
-                  </View>
-                )}
+  /* ----- Журнал ----- */
+  const historyTab = history.length ? (
+    <Section title="Последние записи">
+      {history.map((h, i) => {
+        const key = h.ts + (h.comp || 'insp');
+        const open = openHist === key;
+        const status = h.action === 'inspection' ? h.status : ACTION_STATUS[h.action] || 'check';
+        const c = st(status);
+        return (
+          <View key={key} className={i === history.length - 1 ? '' : 'border-b border-divider'}>
+            <Pressable onPress={() => setOpenHist(open ? null : key)} className="flex-row items-center gap-3 min-h-[64px] py-3 active:opacity-60">
+              <View className={`w-10 h-10 rounded-full items-center justify-center ${c.soft}`}>
+                <Ionicons name={ACTION_ICON[h.action] || 'document-text-outline'} size={22} color={c.color} />
               </View>
-            );
-          })}
-        </View>
-      ) : (
-        <View className="items-center gap-2 py-6 px-2">
-          <Ionicons name="document-text-outline" size={36} color={C.faint} />
-          <Text className="text-[17px] font-bold text-fg">Записей пока нет</Text>
-          <Text className={`${T.muted} text-center`}>Сохраните осмотр или отметьте узел как проверенный.</Text>
-        </View>
-      )}
+              <View className="flex-1 gap-0.5">
+                <Text className={T.bodyB} numberOfLines={1}>{h.compName}</Text>
+                <Text className={T.cap} numberOfLines={1}>{fmtTs(h.ts)} · {SHORT[h.unit] || h.unit}</Text>
+              </View>
+              <Text className={`text-[14px] font-semibold ${c.text}`}>{h.action === 'inspection' ? c.word : ACTIONS[h.action]}</Text>
+              <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={22} color={C.muted} />
+            </Pressable>
+            {open && (
+              <View className="pb-4 gap-2">
+                {!!h.findings && <Text className={T.body}>{h.findings}</Text>}
+                {!h.findings && <Text className={T.body}>Замечаний не было.</Text>}
+                {!!h.note && <Text className={T.body}>Заметка: {h.note}</Text>}
+                {!!(h.user && h.user.name) && <Text className={T.cap}>{h.user.name}{h.user.role ? `, ${h.user.role}` : ''}</Text>}
+              </View>
+            )}
+          </View>
+        );
+      })}
+    </Section>
+  ) : (
+    <View className="bg-surface rounded-xl border border-divider">
+      <Empty icon="document-text-outline" text="Здесь появятся ваши осмотры и отметки по узлам.">
+        <View className="self-stretch pt-2"><Primary title="Начать осмотр" icon="camera" onPress={() => { setTab('inspect'); setCamMode('photo'); }} /></View>
+      </Empty>
     </View>
   );
 
@@ -721,18 +798,18 @@ export default function App() {
   if (tab === 'inspect' && !photo) {
     action = (
       <>
-        <Btn title="Сфотографировать узел" kind="primary" icon="camera" onPress={() => setCamMode('photo')} />
-        <View className="flex-row justify-center gap-6">
+        <Primary title="Сфотографировать узел" icon="camera" onPress={() => setCamMode('photo')} />
+        <View className="flex-row justify-center gap-8">
           <Link title="Из галереи" icon="images-outline" onPress={pickFromGallery} />
-          <Link title="Сканировать QR" icon="qr-code-outline" onPress={() => setCamMode('qr')} />
+          <Link title="QR-код" icon="qr-code-outline" onPress={() => setCamMode('qr')} />
         </View>
       </>
     );
   } else if (tab === 'inspect' && photo) {
     action = (
       <>
-        <Btn title="Сохранить в журнал" kind="primary" icon="checkmark" onPress={saveInspection} disabled={busy} />
-        <View className="flex-row justify-center gap-6">
+        <Primary title="Сохранить в журнал" icon="checkmark" onPress={saveInspection} disabled={busy || !!ai} />
+        <View className="flex-row justify-center gap-8">
           <Link title="Новое фото" icon="camera-outline" onPress={() => setCamMode('photo')} />
           <Link title="Отмена" icon="close" onPress={resetPhoto} />
         </View>
@@ -742,39 +819,45 @@ export default function App() {
 
   const sb = sheet ? model.byComp[sheet] : null;
   const sbFind = sb ? sortFindings(sb.findings) : [];
+  const sbSteps = uniq(sbFind.map((f) => f.action)).map((text) => ({ text }));
 
   return (
     <View className="flex-1 bg-bg">
       <StatusBar barStyle="light-content" backgroundColor={C.primary} />
-      <View className="bg-primary px-4 pb-3 flex-row items-center justify-between" style={{ paddingTop: TOP + 8 }}>
-        <Text className="text-white text-[20px] font-extrabold tracking-[0.5px]">MaintAR</Text>
-        <Pressable onPress={() => setShowProfile(true)} hitSlop={8} accessibilityLabel="Профиль"
-          className="w-11 h-11 rounded-full bg-white/15 items-center justify-center active:opacity-75">
-          <Ionicons name="person" size={22} color="#fff" />
+      <View className="bg-primary px-4 flex-row items-center justify-between" style={{ paddingTop: TOP + 8, paddingBottom: 8 }}>
+        <Text className="text-white text-[24px] font-semibold">MaintAR</Text>
+        <Pressable onPress={() => setShowProfile(true)} hitSlop={4} accessibilityLabel="Профиль"
+          className="w-12 h-12 rounded-full bg-white/15 items-center justify-center active:opacity-75">
+          <Ionicons name="person" size={24} color="#fff" />
         </Pressable>
       </View>
 
-      <ScrollView ref={scroll} contentContainerClassName="p-4 pb-6 gap-4" keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scroll} contentContainerClassName="p-4 pb-8 gap-6" keyboardShouldPersistTaps="handled">
         {tab === 'inspect' ? (photo ? inspectResult : inspectStart) : tab === 'unit' ? unitTab : historyTab}
       </ScrollView>
 
       {!!toast && (
-        <View className="absolute left-4 right-4 items-center" style={{ bottom: (action ? 150 : 90) + BOTTOM }} pointerEvents="none">
-          <View className="bg-fg rounded-full px-4 py-2.5"><Text className="text-white text-[15px] font-semibold">{toast}</Text></View>
+        <View className="absolute left-4 right-4 items-center" style={{ bottom: (action ? 160 : 96) + BOTTOM }} pointerEvents="none">
+          <View className="bg-fg rounded-xl px-4 py-3 flex-row items-center gap-2">
+            <Ionicons name="checkmark-circle" size={20} color="#fff" />
+            <Text className="text-white text-[17px]">{toast}</Text>
+          </View>
         </View>
       )}
 
-      {action && <View className="px-4 pt-3 pb-1 gap-0.5 bg-surface border-t border-divider">{action}</View>}
+      {action && <View className="px-4 pt-4 gap-1 bg-surface border-t border-divider">{action}</View>}
 
-      <View className="flex-row bg-surface border-t border-line" style={{ paddingBottom: BOTTOM }}>
+      <View className="flex-row bg-surface border-t border-divider" style={{ paddingBottom: BOTTOM }}>
         {TABS.map(([id, title, icon]) => {
           const on = tab === id;
           return (
-            <Pressable key={id} onPress={() => switchTab(id)} className="flex-1 items-center min-h-[64px] justify-center">
-              <View className={`px-4 py-1.5 rounded-xl items-center gap-0.5 ${on ? 'bg-primary-soft' : ''}`}>
+            <Pressable key={id} onPress={() => switchTab(id)} accessibilityRole="tab" accessibilityState={{ selected: on }}
+              className="flex-1 items-center justify-center min-h-[64px] pt-2">
+              <View className={`absolute top-0 h-[3px] w-12 rounded-b-full ${on ? 'bg-primary' : ''}`} />
+              <View className={`w-16 h-8 rounded-full items-center justify-center ${on ? 'bg-primary-soft' : ''}`}>
                 <Ionicons name={on ? icon.replace('-outline', '') : icon} size={24} color={on ? C.primary : C.muted} />
-                <Text className={`text-[13px] ${on ? 'text-primary font-bold' : 'text-muted font-medium'}`}>{title}</Text>
               </View>
+              <Text className={`text-[14px] mt-0.5 ${on ? 'text-primary font-semibold' : 'text-muted'}`}>{title}</Text>
             </Pressable>
           );
         })}
@@ -784,105 +867,123 @@ export default function App() {
       <Sheet visible={!!sb} onClose={closeSheet}
         head={sb && (
           <View className="flex-1 gap-2">
-            <Text className={T.h1}>{sb.c.name}</Text>
-            <View className="self-start"><Pill status={sb.status} big /></View>
+            <Text className={T.title}>{sb.c.name}</Text>
+            <Status status={sb.status} big />
           </View>
         )}
         footer={sb && (
-          <View className="gap-1 pt-1">
-            <View className="flex-row gap-2">
-              <Btn title="Проверено" kind="primary" icon="checkmark" onPress={() => record('checked')} className="flex-1" />
-              <Btn title="Заменено" icon="refresh" onPress={() => record('replaced')} className="flex-1 min-h-[56px]" />
+          <View className="gap-3">
+            <Primary title="Проверено" icon="checkmark" onPress={() => record('checked')} />
+            <View className="flex-row gap-3">
+              <Secondary title="Заменено" icon="refresh" onPress={() => record('replaced')} className="flex-1" />
+              <Secondary title="Есть дефект" icon="warning-outline" danger onPress={() => record('defect')} className="flex-1" />
             </View>
-            <View className="items-center"><Link title="Отметить дефект" onPress={() => record('defect')} /></View>
           </View>
         )}>
         {sb && (
           <>
-            {sbFind[0] ? (
-              <View className="bg-bg rounded-xl p-3 gap-1">
-                <Text className="text-[14px] font-bold text-primary">Что делать</Text>
-                <Text className={T.body}>{sbFind[0].action}</Text>
+            <View className={CARD}>
+              <View className="gap-1">
+                <Text className={T.cap}>Что не так</Text>
+                <Text className={T.body}>{sbFind.length ? sbFind.map((f) => f.label).join('; ') : 'Замечаний по фото и датчикам нет.'}</Text>
               </View>
-            ) : <Text className={T.muted}>Замечаний по фото и датчикам нет.</Text>}
-            <View className="gap-1.5">
-              <Text className="text-[14px] font-bold text-muted">Ресурс</Text>
+              {sbSteps.length > 0 && (
+                <View className="gap-2">
+                  <Text className={T.cap}>Что сделать</Text>
+                  <Steps items={sbSteps} />
+                </View>
+              )}
+            </View>
+            <View className={CARD}>
+              <Text className={T.cap}>Ресурс</Text>
               <ResBar res={sb.res} />
             </View>
             {showNote ? (
-              <TextInput className={`${INPUT} min-h-[80px]`} style={{ textAlignVertical: 'top' }} multiline value={note} onChangeText={setNote}
-                autoFocus placeholder="Что увидели и что сделали" placeholderTextColor={C.faint} />
+              <TextInput className="border border-line rounded-xl p-4 text-[17px] text-fg bg-surface min-h-[96px]" style={{ textAlignVertical: 'top' }}
+                multiline value={note} onChangeText={setNote} autoFocus placeholder="Что увидели и что сделали" placeholderTextColor={C.muted} />
             ) : <Link title="Добавить заметку" icon="create-outline" onPress={() => setShowNote(true)} />}
-            <Expand title="Подробнее">
-              {sbFind.map((f) => (
-                <View key={f.id} className={`border-l-4 pl-3 gap-1 ${st(f.status).borderL}`}>
-                  <Text className={T.h3}>{f.label}</Text>
-                  <Text className={T.body}>{f.detail}</Text>
-                  {f !== sbFind[0] && <Text className={T.small}>Что делать: {f.action}</Text>}
-                  <Text className={T.faint}>
-                    {SRC_TEXT[f.src] || f.src} · правило {f.id}{f.confidence != null ? ` · уверенность ${Math.round(f.confidence * 100)} %` : ''}
-                  </Text>
+            <View className="bg-surface rounded-xl border border-divider px-4">
+              <Expand title="Подробнее">
+                {sbFind.map((f) => (
+                  <View key={f.id} className="gap-1">
+                    <Text className={T.bodyB}>{f.label}</Text>
+                    <Text className={T.body}>{f.detail}</Text>
+                    <Text className={T.cap}>
+                      {SRC_TEXT[f.src] || f.src} · правило {f.id}{f.confidence != null ? ` · уверенность ${Math.round(f.confidence * 100)} %` : ''}
+                    </Text>
+                  </View>
+                ))}
+                <View>
+                  <KV k="Нормативный срок" v={sb.c.norm != null ? `${num(sb.c.norm, 0)} ч` : 'не задан'} />
+                  {sb.res.kind === 'calc' && <KV k="Наработка узла" v={`${num(sb.res.used, 0)} ч`} />}
+                  <KV k="Установлен" v={fmtDate(sb.res.s.date)} />
+                  <KV k="Последняя проверка" v={sb.res.s.lastCheck ? fmtTs(sb.res.s.lastCheck) : 'нет записей'} last />
                 </View>
-              ))}
-              <View>
-                <KV k="Нормативный срок" v={sb.c.norm != null ? `${num(sb.c.norm, 0)} ч` : 'не задан'} />
-                {sb.res.kind === 'calc' && <KV k="Наработка узла" v={`${num(sb.res.used, 0)} ч`} />}
-                <KV k="Установлен" v={fmtDate(sb.res.s.date)} />
-                <KV k="Последняя проверка" v={sb.res.s.lastCheck ? fmtTs(sb.res.s.lastCheck) : 'нет записей'} last />
-              </View>
-              <Text className={T.faint}>{sb.c.desc}</Text>
-            </Expand>
+                <Text className={T.cap}>{sb.c.desc}</Text>
+              </Expand>
+            </View>
           </>
         )}
       </Sheet>
 
       {/* выбор агрегата */}
-      <Sheet visible={showUnits} onClose={() => setShowUnits(false)} title="Агрегат"
-        footer={<Btn title="Сканировать QR-код" icon="qr-code-outline" onPress={() => { setShowUnits(false); setCamMode('qr'); }} />}>
-        {UNITS.map((u) => {
-          const on = u.id === unitId;
-          return (
-            <Pressable key={u.id} onPress={() => chooseUnit(u.id, '')}
-              className={`flex-row items-center gap-3 border rounded-xl p-4 active:opacity-75 ${on ? 'border-primary bg-primary-soft' : 'border-line'}`}>
-              <Text className={`${T.h3} flex-1`}>{u.name}</Text>
-              {on && <Ionicons name="checkmark-circle" size={24} color={C.primary} />}
-            </Pressable>
-          );
-        })}
+      <Sheet visible={showUnits} onClose={() => setShowUnits(false)} title="Выберите агрегат"
+        footer={<Secondary title="Сканировать QR-код" icon="qr-code-outline" onPress={() => { setShowUnits(false); setCamMode('qr'); }} />}>
+        <View className="bg-surface rounded-xl border border-divider px-4">
+          {UNITS.map((u, i) => {
+            const on = u.id === unitId;
+            return (
+              <Row key={u.id} icon="construct-outline" title={u.name} sub={on ? 'Выбран сейчас' : SHORT[u.id]}
+                right={on ? <Ionicons name="checkmark-circle" size={26} color={C.primary} /> : null}
+                onPress={() => chooseUnit(u.id, '')} last={i === UNITS.length - 1} />
+            );
+          })}
+        </View>
       </Sheet>
 
       {/* профиль и настройки */}
       <Sheet visible={showProfile} onClose={closeProfile} title="Профиль">
-        <View className="flex-row items-center gap-3">
-          <Ionicons name="person-circle" size={52} color={C.primary} />
-          <View className="flex-1">
-            <Text className={T.h3}>{user.name}</Text>
-            <Text className={T.small}>{user.role}</Text>
-          </View>
-        </View>
-        {confirmLogout ? (
-          <View className="gap-2 bg-bg rounded-xl p-3">
-            <Text className={T.body}>Выйти? Журнал останется на телефоне.</Text>
-            <View className="flex-row gap-2">
-              <Btn title="Выйти" kind="danger" onPress={doLogout} className="flex-1" />
-              <Btn title="Отмена" onPress={() => setConfirmLogout(false)} className="flex-1" />
+        <View className={CARD}>
+          <View className="flex-row items-center gap-3">
+            <Ionicons name="person-circle" size={56} color={C.primary} />
+            <View className="flex-1">
+              <Text className={T.bodyB}>{user.name}</Text>
+              <Text className={T.cap}>{user.role}</Text>
             </View>
           </View>
-        ) : <Btn title="Выйти" icon="log-out-outline" onPress={() => setConfirmLogout(true)} />}
-
-        <View className="flex-row items-center gap-3 py-2 border-t border-divider pt-4">
-          <View className="flex-1 gap-0.5">
-            <Text className={T.h3}>Режим демонстрации</Text>
-            <Text className={T.small}>Примеры фото из кейса и выбор ситуации на датчиках</Text>
-          </View>
-          <Switch value={demo} onValueChange={setDemo} trackColor={{ true: C.primary, false: C.line }} thumbColor="#fff" />
+          {confirmLogout ? (
+            <View className="gap-3">
+              <Text className={T.body}>Выйти? Журнал останется на телефоне.</Text>
+              <View className="flex-row gap-3">
+                <Secondary title="Выйти" danger onPress={doLogout} className="flex-1" />
+                <Secondary title="Отмена" onPress={() => setConfirmLogout(false)} className="flex-1" />
+              </View>
+            </View>
+          ) : <Secondary title="Выйти" icon="log-out-outline" onPress={() => setConfirmLogout(true)} />}
         </View>
 
-        <View className="gap-2 border-t border-divider pt-4">
-          <Text className={T.h3}>Сервис анализа фото</Text>
-          <TextInput className={`${INPUT} min-h-[50px]`} value={apiUrl} onChangeText={setApiUrl} autoCapitalize="none" autoCorrect={false}
-            keyboardType="url" placeholder="http://адрес-сервера:8000" placeholderTextColor={C.faint} />
-          <Text className={T.small}>{apiUrl.trim() ? 'Адрес задан. Новые фото уходят на анализ.' : 'Без адреса ИИ не проверит ваши фото.'}</Text>
+        <View className={CARD}>
+          <View className="flex-row items-center gap-3 min-h-[48px]">
+            <View className="flex-1 gap-0.5">
+              <Text className={T.bodyB}>Режим демонстрации</Text>
+              <Text className={T.cap}>Примеры фото из кейса и выбор ситуации на датчиках</Text>
+            </View>
+            <Switch value={demo} onValueChange={setDemo} trackColor={{ true: C.primary, false: C.line }} thumbColor="#fff" activeThumbColor="#fff" />
+          </View>
+          <View className="flex-row items-center gap-3 min-h-[48px] border-t border-divider pt-4">
+            <View className="flex-1 gap-0.5">
+              <Text className={T.bodyB}>Подсказка для новичка</Text>
+              <Text className={T.cap}>Шаги осмотра на главном экране</Text>
+            </View>
+            <Switch value={tips} onValueChange={setTips} trackColor={{ true: C.primary, false: C.line }} thumbColor="#fff" activeThumbColor="#fff" />
+          </View>
+        </View>
+
+        <View className={CARD}>
+          <Text className={T.bodyB}>Сервис анализа фото</Text>
+          <TextInput className="border border-line rounded-xl px-4 h-12 text-[17px] text-fg bg-surface" value={apiUrl} onChangeText={setApiUrl}
+            autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="http://адрес-сервера:8000" placeholderTextColor={C.muted} />
+          <Text className={T.cap}>{apiUrl.trim() ? 'Адрес задан. Новые фото уходят на проверку ИИ.' : 'Без адреса ИИ не проверит ваши фото.'}</Text>
         </View>
       </Sheet>
     </View>
