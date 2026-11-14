@@ -86,14 +86,21 @@ function Secondary({ title, icon, onPress, className = '' }) {
     </Pressable>
   );
 }
+// Пароль можно показать кнопкой-глазом: скрытое поле пароля Android прячет при показе экрана.
 function Field({ label, icon, secure, ...props }) {
+  const [show, setShow] = useState(false);
   return (
     <View className="gap-1.5">
       {!!label && <Text className={T.cap}>{label}</Text>}
       <View className="flex-row items-center gap-2.5 border border-line rounded-xl px-3 h-12 bg-surface">
         {!!icon && <Ionicons name={icon} size={20} color={C.muted} />}
         <TextInput className="flex-1 text-[17px] text-fg" placeholderTextColor={C.muted} autoCapitalize="none"
-          autoCorrect={false} secureTextEntry={secure} {...props} />
+          autoCorrect={false} secureTextEntry={!!secure && !show} {...props} />
+        {!!secure && (
+          <Pressable onPress={() => setShow(!show)} hitSlop={8} accessibilityLabel={show ? 'Скрыть пароль' : 'Показать пароль'} className="w-10 h-10 items-center justify-center">
+            <Ionicons name={show ? 'eye-off-outline' : 'eye-outline'} size={22} color={C.muted} />
+          </Pressable>
+        )}
       </View>
     </View>
   );
