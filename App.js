@@ -24,7 +24,7 @@ const CARD = 'bg-surface rounded-xl border border-divider p-4 gap-3';
 
 // Статус оборудования и находок: значок, слово и цвет вместе.
 const ST = {
-  ok: { word: 'В порядке', icon: 'checkmark-circle', color: C.ok, soft: 'bg-ok-bg', text: 'text-ok' },
+  ok: { word: 'Видимых проблем не обнаружено', icon: 'checkmark-circle', color: C.ok, soft: 'bg-ok-bg', text: 'text-ok' },
   check: { word: 'Проверить', icon: 'alert-circle', color: C.check, soft: 'bg-check-bg', text: 'text-check' },
   defect: { word: 'Есть дефекты', icon: 'close-circle', color: C.defect, soft: 'bg-defect-bg', text: 'text-defect' },
   none: { word: 'Не проверялось', icon: 'help-circle', color: C.muted, soft: 'bg-sunken', text: 'text-muted' },
@@ -303,7 +303,7 @@ function Findings({ components }) {
 
 // ----- оборудование: список -----
 // Поиск оборудования только по QR-коду или номеру; ниже то, что пользователь уже находил.
-function FindEquipment({ user, onFound, onScan, version }) {
+function FindEquipment({ user, onFound, onScan, onManual, version }) {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -327,6 +327,9 @@ function FindEquipment({ user, onFound, onScan, version }) {
         <Field icon="barcode-outline" value={code} onChangeText={(v) => { setCode(v); setErr(''); }}
           placeholder="Код или серийный номер" onSubmitEditing={() => find(code, 'SerialNumber')} autoCapitalize="characters" />
         <Secondary title="Найти по номеру" icon="search-outline" onPress={() => find(code, 'SerialNumber')} />
+        <Pressable onPress={onManual} hitSlop={6} className="self-center min-h-[44px] justify-center">
+          <Text className="text-[16px] text-primary underline">Не получается? Выбрать вручную</Text>
+        </Pressable>
         <ErrorBox text={err} />
         {busy && <ActivityIndicator color={C.primary} />}
       </View>
@@ -779,6 +782,25 @@ function Profile({ user, onLogout }) {
   );
 }
 
+// Ручной выбор, если QR или номер не распознались (п. 4.1 ТЗ).
+function ManualPick({ onPick }) {
+  const [items, setItems] = useState(null);
+  const [err, setErr] = useState('');
+  useEffect(() => { api.listEquipment().then(setItems).catch((e) => { setErr(e.message); setItems([]); }); }, []);
+  return (
+    <ScrollView contentContainerClassName="p-4 gap-3 pb-8">
+      <ErrorBox text={err} />
+      {items === null && <ActivityIndicator color={C.primary} />}
+      {(items || []).map((e) => (
+        <Pressable key={e.id} onPress={() => onPick(e)} className={`${CARD} active:opacity-70`}>
+          <Text className={T.bodyB}>{e.name}</Text>
+          <Text className={T.cap}>{e.model} · {e.code}{e.location ? ` · ${e.location}` : ''}</Text>
+        </Pressable>
+      ))}
+    </ScrollView>
+  );
+}
+
 function JournalScreen({ equipmentId }) {
   const [items, setItems] = useState(null);
   const [err, setErr] = useState('');
@@ -899,7 +921,18 @@ export default function App() {
       body = <InspectionView id={top.id} onBack={pop} />;
     } else if (top.kind === 'error') {
       title = 'Ошибка';
-      body = <View className="p-4 gap-4"><ErrorBox text={top.text} /><Secondary title="Назад" onPress={pop} /></View>;
+      body = (
+        <View className="p-4 gap-4">
+          <ErrorBox text={top.text} />
+          <Secondary title="Назад" onPress={pop} />
+          <Pressable onPress={() => setStack((st) => [...st.slice(0, -1), { kind: 'manual' }])} className="self-center min-h-[44px] justify-center">
+            <Text className="text-[16px] text-primary underline">Не получается? Выбрать вручную</Text>
+          </Pressable>
+        </View>
+      );
+    } else if (top.kind === 'manual') {
+      title = 'Выбор оборудования';
+      body = <ManualPick onPick={(e) => { setStack((st) => st.slice(0, -1)); onFound({ equipment: e }, e.code, 'Manual'); }} />;
     }
     return (
       <View className="flex-1 bg-bg">
@@ -915,7 +948,7 @@ export default function App() {
       <StatusBar barStyle="light-content" backgroundColor={C.primary} />
       <Header title={TABS.find((t) => t[0] === tab)[1]} />
       <View className="flex-1">
-        {tab === 'equipment' && <FindEquipment user={user} version={version} onFound={onFound} onScan={() => setCamera({ mode: 'qr' })} />}
+        {tab === 'equipment' && <FindEquipment user={user} version={version} onFound={onFound} onScan={() => setCamera({ mode: 'qr' })} onManual={() => push({ kind: 'manual' })} />}
         {tab === 'history' && <History onOpen={(id) => push({ kind: 'inspection', id })} />}
         {tab === 'profile' && <Profile user={user} onLogout={logout} />}
       </View>
