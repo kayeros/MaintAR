@@ -246,7 +246,7 @@ function CameraScreen({ mode, hint, onPhoto, onQr, onClose }) {
 }
 
 // ----- фото с рамками -----
-function PhotoBoxes({ photo, findings }) {
+function PhotoBoxes({ photo, findings, onComponent }) {
   const ratio = (photo.width || 4) / (photo.height || 3);
   const boxes = findings.filter((f) => f.boxWidth > 0 && f.boxHeight > 0);
   return (
@@ -255,14 +255,15 @@ function PhotoBoxes({ photo, findings }) {
       {boxes.map((f, i) => {
         const c = ST[(CATEGORY[f.category] || CATEGORY.CheckRecommended).key];
         return (
-          <View key={i} className="absolute border-[3px] rounded" style={{
+          <Pressable key={i} disabled={!onComponent || !f.componentId} onPress={() => onComponent(f.componentId)}
+            accessibilityLabel={`Узел: ${f.componentName || ''}`} className="absolute border-[3px] rounded" style={{
             borderColor: c.color, left: `${f.boxX * 100}%`, top: `${f.boxY * 100}%`,
             width: `${Math.min(f.boxWidth, 1 - f.boxX) * 100}%`, height: `${Math.min(f.boxHeight, 1 - f.boxY) * 100}%`,
           }}>
-            <View className="absolute left-[-3px] h-6 min-w-[24px] px-1.5 items-center justify-center rounded" style={{ backgroundColor: c.color, top: f.boxY > 0.08 ? -25 : 0 }}>
-              <Text className="text-white text-[13px] font-bold">{i + 1}</Text>
+            <View className="absolute left-[-3px] h-7 min-w-[28px] px-1.5 items-center justify-center rounded" style={{ backgroundColor: c.color, top: f.boxY > 0.08 ? -29 : 0 }}>
+              <Text className="text-white text-[14px] font-bold">{i + 1}</Text>
             </View>
-          </View>
+          </Pressable>
         );
       })}
     </View>
@@ -270,9 +271,9 @@ function PhotoBoxes({ photo, findings }) {
 }
 
 // Находки по узлам: название, уверенность, пояснение, рекомендация.
-function Findings({ components }) {
+function Findings({ components, onComponent }) {
   const rows = [];
-  (components || []).forEach((c) => (c.findings || []).forEach((f) => rows.push({ ...f, componentName: c.componentName })));
+  (components || []).forEach((c) => (c.findings || []).forEach((f) => rows.push({ ...f, componentName: c.componentName, componentId: c.componentId })));
   const problems = rows.filter((f) => f.category !== 'NoVisibleProblems');
   if (!problems.length) {
     return <View className={CARD}><Badge k="ok" text="Видимых проблем не обнаружено" /><Text className={T.cap}>Это предварительный осмотр, он не подтверждает исправность.</Text></View>;
@@ -280,11 +281,11 @@ function Findings({ components }) {
   return problems.map((f, i) => {
     const cat = CATEGORY[f.category] || CATEGORY.CheckRecommended;
     return (
-      <View key={i} className={CARD}>
+      <Pressable key={i} disabled={!onComponent} onPress={() => onComponent(f.componentId)} className={`${CARD} active:opacity-70`}>
         <View className="flex-row items-start justify-between gap-2">
           <View className="flex-1 gap-0.5">
             <Text className={T.bodyB}>{i + 1}. {f.defectName || 'Признак дефекта'}</Text>
-            <Text className={T.cap}>Узел: {f.componentName}</Text>
+            <Text className={onComponent ? 'text-[15px] text-primary font-semibold' : T.cap}>Узел: {f.componentName}{onComponent ? ' ›' : ''}</Text>
           </View>
           {f.confidence != null && <Text className="text-[15px] font-semibold text-muted">{Math.round(f.confidence * 100)} %</Text>}
         </View>
@@ -296,7 +297,7 @@ function Findings({ components }) {
             <Text className={T.body}>{f.recommendation}</Text>
           </View>
         )}
-      </View>
+      </Pressable>
     );
   });
 }
@@ -590,7 +591,7 @@ function EquipmentCard({ id, onInspect, onShoot, onComponent, onRecord, onJourna
         <ErrorBox text={photoErr} />
       </View>
       <Primary title="Сделать фото и проверить" icon="camera" onPress={() => onInspect(d)} />
-      {k === 'defect' && <Findings components={rep.defects} />}
+      {k === 'defect' && <Findings components={rep.defects} onComponent={(cid) => { const c = d.components.find((x) => x.id === cid); if (c) onComponent(c, d); }} />}
       <View className={CARD}>
         <Text className={T.bodyB}>Паспорт</Text>
         <View>
@@ -639,7 +640,7 @@ function EquipmentCard({ id, onInspect, onShoot, onComponent, onRecord, onJourna
 }
 
 // ----- анализ и результат -----
-function ResultView({ result, photo, onRetry, onBack, onRecord }) {
+function ResultView({ result, photo, onRetry, onBack, onRecord, onComponent }) {
   const s = result.summary;
   if (s.status === 'Failed') {
     return (
@@ -655,8 +656,9 @@ function ResultView({ result, photo, onRetry, onBack, onRecord }) {
     );
   }
   const k = reportStatus(s.result);
+  const openComp = onComponent ? (cid) => onComponent(s.equipmentId, cid) : null;
   const flat = [];
-  (result.components || []).forEach((c) => (c.findings || []).forEach((f) => flat.push({ ...f, componentName: c.componentName })));
+  (result.components || []).forEach((c) => (c.findings || []).forEach((f) => flat.push({ ...f, componentName: c.componentName, componentId: c.componentId })));
   return (
     <ScrollView contentContainerClassName="p-4 gap-4 pb-8">
       <View className={`rounded-xl p-4 gap-2 ${ST[k].soft}`}>
@@ -666,8 +668,9 @@ function ResultView({ result, photo, onRetry, onBack, onRecord }) {
         </View>
         <Text className={T.body}>{s.equipmentName} · {fmtDate(s.createdAt)}</Text>
       </View>
-      {photo && <PhotoBoxes photo={photo} findings={flat} />}
-      <Findings components={result.components} />
+      {photo && <PhotoBoxes photo={photo} findings={flat} onComponent={openComp} />}
+      {photo && flat.some((f) => f.boxWidth > 0 && f.category !== 'NoVisibleProblems') && onComponent && <Text className={`${T.cap} text-center`}>Нажмите на рамку, чтобы открыть узел</Text>}
+      <Findings components={result.components} onComponent={openComp} />
       {onRecord && k === 'defect' && (
         <Primary title="Записать работу по узлу" icon="create" onPress={() => {
           const c = (result.components || []).find((x) => (x.findings || []).some((f) => f.category !== 'NoVisibleProblems'));
@@ -680,7 +683,7 @@ function ResultView({ result, photo, onRetry, onBack, onRecord }) {
   );
 }
 
-function Analyze({ photo, target, onBack, onRecord }) {
+function Analyze({ photo, target, onBack, onRecord, onComponent }) {
   const [state, setState] = useState({ busy: true, result: null, err: '' });
   const run = useCallback(async () => {
     setState({ busy: true, result: null, err: '' });
@@ -707,7 +710,7 @@ function Analyze({ photo, target, onBack, onRecord }) {
       </View>
     );
   }
-  return <ResultView result={state.result} photo={photo} onRetry={run} onBack={onBack} onRecord={onRecord} />;
+  return <ResultView result={state.result} photo={photo} onRetry={run} onBack={onBack} onRecord={onRecord} onComponent={onComponent} />;
 }
 
 // ----- история -----
@@ -789,7 +792,7 @@ function Inspections({ onOpen }) {
     />
   );
 }
-function InspectionView({ id, onBack }) {
+function InspectionView({ id, onBack, onComponent }) {
   const [r, setR] = useState(null);
   const [err, setErr] = useState('');
   const [size, setSize] = useState(null);
@@ -802,7 +805,7 @@ function InspectionView({ id, onBack }) {
   }, [r]);
   if (err) return <View className="p-4"><ErrorBox text={err} /></View>;
   if (!r) return <View className="p-8"><ActivityIndicator color={C.primary} /></View>;
-  return <ResultView result={r} onBack={onBack} photo={size} />;
+  return <ResultView result={r} onBack={onBack} photo={size} onComponent={onComponent} />;
 }
 
 // ----- профиль -----
@@ -895,6 +898,16 @@ export default function App() {
     setStack((st) => [...st.filter((s) => s.kind !== 'choose'), { kind: 'analyze', photo: { uri: a.uri, width: a.width, height: a.height }, target }]);
   };
 
+  // Узел из результата осмотра: подгружаем карточку, чтобы знать ресурс и журнал.
+  const openComponent = async (equipmentId, cid) => {
+    try {
+      const d = await api.getEquipment(equipmentId);
+      const c = d.components.find((x) => x.id === cid);
+      if (!c) throw new Error('Узел не найден');
+      push({ kind: 'component', component: c, eqInstalled: d.installedAt, equipmentId: d.id, components: d.components, report: d.report });
+    } catch (e) { push({ kind: 'error', text: e.message }); }
+  };
+
   // Найдено по QR или номеру: запоминаем у пользователя и открываем карточку.
   async function onFound(report, value, method) {
     const e = report.equipment;
@@ -930,7 +943,7 @@ export default function App() {
       body = <EquipmentCard id={top.id} version={version}
         onInspect={(d) => startInspection({ ...top.target, value: top.target?.value || d.code, name: d.name })}
         onShoot={(d, c) => setCamera({ mode: 'photo', target: { ...top.target, value: top.target?.value || d.code, name: d.name, hint: `Наведите камеру на: ${c.name}` } })}
-        onComponent={(c, d) => push({ kind: 'component', component: c, eqInstalled: d.installedAt, equipmentId: d.id, components: d.components })}
+        onComponent={(c, d) => push({ kind: 'component', component: c, eqInstalled: d.installedAt, equipmentId: d.id, components: d.components, report: d.report })}
         onRecord={(d, cid) => push({ kind: 'record', components: d.components, preset: cid })}
         onJournal={(d) => push({ kind: 'journal', equipmentId: d.id })}
         onPhotoChanged={(d, url) => api.addRecent(user.email, { id: d.id, code: d.code, name: d.name, model: d.model, method: top.target?.method || 'Manual', photoUrl: url })} />;
@@ -962,10 +975,11 @@ export default function App() {
         onRecord={async (equipmentId, cid) => {
           try { const d = await api.getEquipment(equipmentId); push({ kind: 'record', components: d.components, preset: cid }); }
           catch (e) { push({ kind: 'error', text: e.message }); }
-        }} />;
+        }}
+        onComponent={openComponent} />;
     } else if (top.kind === 'inspection') {
       title = 'Осмотр';
-      body = <InspectionView id={top.id} onBack={pop} />;
+      body = <InspectionView id={top.id} onBack={pop} onComponent={openComponent} />;
     } else if (top.kind === 'error') {
       title = 'Ошибка';
       body = (
