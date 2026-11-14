@@ -127,13 +127,27 @@ function Header({ title, onBack, right }) {
   const { top } = useSafeAreaInsets();
   return (
     <View className="bg-primary px-4 pb-3 flex-row items-center gap-3" style={{ paddingTop: top + 8 }}>
-      {onBack && (
+      {onBack ? (
         <Pressable onPress={onBack} hitSlop={8} accessibilityLabel="Назад"
           className="w-11 h-11 rounded-full bg-white/15 items-center justify-center active:opacity-75">
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </Pressable>
+      ) : (
+        // Логотип MaintAR — тот же знак, что на экране входа. На внутренних экранах на его месте кнопка «Назад».
+        <View accessibilityLabel="MaintAR" accessibilityRole="image"
+          className="w-11 h-11 rounded-xl bg-white/15 items-center justify-center">
+          <Ionicons name="scan-outline" size={24} color="#fff" />
+        </View>
       )}
-      <Text className="text-white text-[20px] font-semibold flex-1" numberOfLines={1}>{title}</Text>
+      {onBack ? (
+        <Text className="text-white text-[20px] font-semibold flex-1" numberOfLines={1}>{title}</Text>
+      ) : (
+        // Название приложения рядом с логотипом, ниже — название вкладки.
+        <View className="flex-1">
+          <Text className="text-white text-[20px] font-bold" numberOfLines={1}>MaintAR</Text>
+          <Text className="text-white/80 text-[13px]" numberOfLines={1}>{title}</Text>
+        </View>
+      )}
       {right}
     </View>
   );
@@ -1004,16 +1018,96 @@ function InspectionView({ id, equipmentId, onBack, onComponent }) {
 }
 
 // ----- профиль -----
-function Profile({ user, onLogout }) {
+function Profile({ user, onLogout, onUserChange }) {
   const [url, setUrl] = useState(api.getBaseUrl());
   const [saved, setSaved] = useState(false);
+  const [avatar, setAvatar] = useState(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(user.name || '');
+  const [nameBusy, setNameBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => { api.getProfile().then((p) => setAvatar(p.avatarUrl)).catch(() => {}); }, []);
+
+  const pickAvatar = async (fromCamera) => {
+    setErr('');
+    try {
+      const opts = { mediaTypes: ['images'], quality: 0.6, allowsEditing: true, aspect: [1, 1] };
+      if (fromCamera && Platform.OS !== 'web') {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) return setErr('Нет доступа к камере. Разрешите его в настройках телефона.');
+      }
+      const r = fromCamera ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
+      if (r.canceled || !r.assets?.[0]) return;
+      setAvatarBusy(true);
+      const res = await api.uploadAvatar({ uri: r.assets[0].uri });
+      setAvatar(res.avatarUrl);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const removeAvatar = async () => {
+    setErr('');
+    try { await api.deleteAvatar(); setAvatar(null); } catch (e) { setErr(e.message); }
+  };
+
+  const saveName = async () => {
+    const v = name.trim();
+    if (!v) return setErr('Введите имя');
+    if (v.length > 50) return setErr('Имя не длиннее 50 символов');
+    setErr(''); setNameBusy(true);
+    try {
+      const next = await api.updateName(v, user);
+      onUserChange && onUserChange(next);
+      setEditing(false);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setNameBusy(false);
+    }
+  };
+
   return (
     <ScrollView contentContainerClassName="p-4 gap-4" keyboardShouldPersistTaps="handled">
       <View className={CARD}>
         <View className="flex-row items-center gap-3">
-          <Ionicons name="person-circle" size={56} color={C.primary} />
-          <View className="flex-1"><Text className={T.bodyB}>{user.name}</Text><Text className={T.cap}>{user.email}</Text></View>
+          <Pressable onPress={() => pickAvatar(false)} accessibilityLabel="Изменить аватарку" className="active:opacity-75">
+            {avatar
+              ? <Image source={{ uri: api.photoUrl(avatar) }} style={{ width: 64, height: 64, borderRadius: 32 }} />
+              : <Ionicons name="person-circle" size={64} color={C.primary} />}
+            <View className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-primary items-center justify-center border-2 border-white">
+              {avatarBusy ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="camera" size={12} color="#fff" />}
+            </View>
+          </Pressable>
+          <View className="flex-1">
+            <Text className={T.bodyB}>{user.name}</Text>
+            <Text className={T.cap}>{user.email}</Text>
+          </View>
         </View>
+
+        <View className="flex-row gap-2">
+          <Secondary title="Галерея" icon="images-outline" onPress={() => pickAvatar(false)} className="flex-1" />
+          <Secondary title="Камера" icon="camera-outline" onPress={() => pickAvatar(true)} className="flex-1" />
+        </View>
+        {avatar && <Secondary title="Удалить аватарку" icon="trash-outline" onPress={removeAvatar} />}
+
+        {editing ? (
+          <View className="gap-2">
+            <Field label="Имя" icon="person-outline" value={name} onChangeText={setName} maxLength={50} autoFocus />
+            <View className="flex-row gap-2">
+              <Secondary title="Отмена" icon="close-outline" onPress={() => { setEditing(false); setName(user.name || ''); setErr(''); }} className="flex-1" />
+              <Secondary title={nameBusy ? 'Сохраняю…' : 'Сохранить'} icon="checkmark-outline" onPress={saveName} className="flex-1" />
+            </View>
+          </View>
+        ) : (
+          <Secondary title="Изменить имя" icon="create-outline" onPress={() => { setName(user.name || ''); setEditing(true); }} />
+        )}
+
+        <ErrorBox text={err} />
         <Secondary title="Выйти" icon="log-out-outline" onPress={onLogout} />
       </View>
       <View className={CARD}>
@@ -1211,7 +1305,7 @@ export default function App() {
       <View className="flex-1">
         {tab === 'equipment' && <FindEquipment user={user} version={version} onFound={onFound} onScan={() => setCamera({ mode: 'qr' })} onManual={() => push({ kind: 'manual' })} />}
         {tab === 'history' && <History onOpen={(id) => push({ kind: 'inspection', id })} />}
-        {tab === 'profile' && <Profile user={user} onLogout={logout} />}
+        {tab === 'profile' && <Profile user={user} onLogout={logout} onUserChange={setUser} />}
       </View>
       <View className="flex-row bg-surface border-t border-divider" style={{ paddingBottom: Math.max(bottom, 8) }}>
         {TABS.map(([id, title, icon]) => {

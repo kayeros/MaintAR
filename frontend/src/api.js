@@ -223,6 +223,25 @@ export async function uploadEquipmentPhoto(id, photo) {
 }
 export const photoUrl = (p) => (p ? (p.startsWith('http') ? p : baseUrl + p) : null);
 
+// Профиль: имя и аватарка.
+export const getProfile = () => request('/api/Profile');
+export async function updateName(name, user) {
+  const r = await request('/api/Profile/name', { method: 'PUT', json: { userName: name.trim() } });
+  const next = { name: r.userName, email: user.email };
+  await saveSession(r.token, next);   // имя есть и в токене — берём новый
+  return { ...user, name: r.userName };
+}
+export async function uploadAvatar(photo) {
+  const path = '/api/Profile/avatar';
+  if (Platform.OS === 'web') {
+    const form = new FormData();
+    form.append('photo', await (await fetch(photo.uri)).blob(), 'avatar.jpg');
+    return request(path, { method: 'POST', form, timeout: 120000 });
+  }
+  return uploadNative(path, 'photo', photo, {});
+}
+export const deleteAvatar = () => request('/api/Profile/avatar', { method: 'DELETE' });
+
 // Телефон: fetch из Expo не принимает файл объектом {uri, name, type},
 // а XMLHttpRequest React Native умеет отправлять его в multipart.
 function uploadNative(path, field, photo, fields) {

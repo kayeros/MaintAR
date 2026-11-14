@@ -9,7 +9,7 @@ GET  /health   -> какие веса загружены и на каком ус
 
 Модели (пути переопределяются переменными BASIC_WEIGHTS и EXPANDED_WEIGHTS):
   basic    — 2 класса (surface_corrosion, pipe_crack), обучена полностью; берём оба класса.
-  expanded — 5 классов, обучена 2 эпохи; берём только pipe_leak, cable_insulation_damage, fastener_issue.
+  expanded — 5 классов, обучена 30 эпох; берём только pipe_leak, cable_insulation_damage, fastener_issue.
 """
 from __future__ import annotations
 
