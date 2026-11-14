@@ -2,7 +2,8 @@
 // Интерфейс намеренно как у сетевого API: все функции async и возвращают {ok, user} или {ok: false, error}.
 // Чтобы перейти на сервер команды, достаточно заменить тела функций на fetch-запросы.
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Crypto from 'expo-crypto';
+import { uuid } from 'expo';
+import { sha256 } from 'js-sha256';
 
 const USERS = 'obh.users';
 const SESSION = 'obh.session';
@@ -21,17 +22,16 @@ const norm = (login) => String(login || '').trim().toLowerCase();
 const publicUser = (u) => ({ name: u.name, role: u.role, login: u.login });
 
 function makeSalt() {
-  const bytes = Crypto.getRandomBytes(16);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return uuid.v4().replace(/-/g, '');
 }
-const hash = (salt, password) => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `${salt}:${password}`);
+const hash = (salt, password) => sha256(new TextEncoder().encode(`${salt}:${password}`));
 
 // Демо-учётка для показа: создаётся при первом обращении, если её ещё нет.
 async function loadUsers() {
   const users = await read(USERS, {});
   if (!users[DEMO.login]) {
     const salt = makeSalt();
-    users[DEMO.login] = { login: DEMO.login, name: 'Инженер (демо)', role: 'Инженер-обходчик', salt, hash: await hash(salt, DEMO.password), created: Date.now() };
+    users[DEMO.login] = { login: DEMO.login, name: 'Инженер (демо)', role: 'Инженер-обходчик', salt, hash: hash(salt, DEMO.password), created: Date.now() };
     await write(USERS, users);
   }
   return users;
@@ -58,7 +58,7 @@ export async function register({ name, role, login, password }) {
   const l = norm(login);
   if (users[l]) return { ok: false, error: 'Такой логин уже занят', field: 'login' };
   const salt = makeSalt();
-  users[l] = { login: l, name: String(name).trim().slice(0, 80), role, salt, hash: await hash(salt, password), created: Date.now() };
+  users[l] = { login: l, name: String(name).trim().slice(0, 80), role, salt, hash: hash(salt, password), created: Date.now() };
   if (!(await write(USERS, users))) return { ok: false, error: 'Не удалось сохранить учётную запись на устройстве' };
   const user = publicUser(users[l]);
   await write(SESSION, { login: l, ts: Date.now() });
@@ -71,7 +71,7 @@ export async function login(loginName, password) {
   if (!password) return { ok: false, error: 'Введите пароль', field: 'password' };
   const users = await loadUsers();
   const u = users[l];
-  if (!u || (await hash(u.salt, password)) !== u.hash) return { ok: false, error: 'Неверный логин или пароль', field: 'password' };
+  if (!u || hash(u.salt, password) !== u.hash) return { ok: false, error: 'Неверный логин или пароль', field: 'password' };
   await write(SESSION, { login: l, ts: Date.now() });
   return { ok: true, user: publicUser(u) };
 }

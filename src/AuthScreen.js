@@ -3,11 +3,11 @@ import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StatusBar, Text, TextInput, View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DEMO, ROLES, login, register, validateRegistration } from './auth';
 import { colors as C } from './theme';
 
-const TOP = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 50;
 const ERR = 'text-[14px] text-defect';
 
 export function Splash() {
@@ -41,6 +41,7 @@ function Field({ label, icon, error, secure, inputRef, ...props }) {
 }
 
 export default function AuthScreen({ onAuth }) {
+  const { top, bottom } = useSafeAreaInsets();
   const [mode, setMode] = useState('login'); // 'login' | 'register'
   const [f, setF] = useState({ name: '', role: ROLES[0], login: '', password: '', password2: '' });
   const [errs, setErrs] = useState({});
@@ -80,8 +81,8 @@ export default function AuthScreen({ onAuth }) {
     <View className="flex-1 bg-bg">
       <StatusBar barStyle="light-content" backgroundColor={C.primary} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView contentContainerClassName="grow pb-8" keyboardShouldPersistTaps="handled">
-          <View className="bg-primary items-center pb-14 px-4 gap-1.5" style={{ paddingTop: TOP + 28 }}>
+        <ScrollView contentContainerClassName="grow" contentContainerStyle={{ paddingBottom: bottom + 24 }} keyboardShouldPersistTaps="handled">
+          <View className="bg-primary items-center pb-14 px-4 gap-1.5" style={{ paddingTop: top + 24 }}>
             <View className="w-16 h-16 rounded-[18px] bg-white/15 items-center justify-center mb-1.5">
               <Ionicons name="scan-outline" size={34} color="#fff" />
             </View>
