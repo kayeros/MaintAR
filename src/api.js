@@ -1,4 +1,5 @@
 // Клиент MaintARBackend: адрес сервера, JWT в AsyncStorage, понятные ошибки на русском.
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const KEY_TOKEN = 'maintar.token';
@@ -133,8 +134,8 @@ export const getInspection = (id) => request(`/api/Inspections/${id}`);
 
 export async function createInspection(photo, value, method) {
   const form = new FormData();
-  if (typeof document !== 'undefined') {
-    // веб: FormData понимает только Blob
+  if (Platform.OS === 'web') {
+    // веб: FormData понимает только Blob; на телефоне файл передаётся объектом {uri, name, type}
     const blob = await (await fetch(photo.uri)).blob();
     form.append('Photo', blob, 'photo.jpg');
   } else {

@@ -216,7 +216,7 @@ function CameraScreen({ mode, hint, onPhoto, onQr, onClose }) {
   const shoot = async () => {
     if (!cam.current || busy) return;
     setBusy(true);
-    try { const p = await cam.current.takePictureAsync({ quality: 0.7 }); onPhoto({ uri: p.uri, width: p.width, height: p.height }); }
+    try { const p = await cam.current.takePictureAsync({ quality: 0.5 }); onPhoto({ uri: p.uri, width: p.width, height: p.height }); }
     catch (e) { setBusy(false); }
   };
   return (
@@ -580,7 +580,7 @@ export default function App() {
   // Фото: камера или галерея, затем анализ.
   const startInspection = (target) => push({ kind: 'choose', target });
   const fromGallery = async (target) => {
-    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
+    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.5 });
     if (r.canceled || !r.assets?.[0]) return;
     const a = r.assets[0];
     setStack((st) => [...st.filter((s) => s.kind !== 'choose'), { kind: 'analyze', photo: { uri: a.uri, width: a.width, height: a.height }, target }]);
