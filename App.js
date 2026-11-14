@@ -726,6 +726,7 @@ function Inspections({ onOpen }) {
         return (
           <Pressable onPress={() => onOpen(i.id)} className={`${CARD} active:opacity-70`}>
             <View className="flex-row items-center gap-3">
+              {!!i.photoPath && <Image source={{ uri: api.photoUrl(i.photoPath) }} style={{ width: 56, height: 56, borderRadius: 10, backgroundColor: C.sunken }} />}
               <View className="flex-1 gap-0.5">
                 <Text className={T.bodyB}>{i.equipmentName}</Text>
                 <Text className={T.cap}>{fmtDate(i.createdAt)} · {i.equipmentCode}</Text>
@@ -742,10 +743,17 @@ function Inspections({ onOpen }) {
 function InspectionView({ id, onBack }) {
   const [r, setR] = useState(null);
   const [err, setErr] = useState('');
+  const [size, setSize] = useState(null);
   useEffect(() => { api.getInspection(id).then(setR).catch((e) => setErr(e.message)); }, [id]);
+  // Фото осмотра с сервера: узнаём размер, чтобы рамки легли точно.
+  useEffect(() => {
+    const uri = r && api.photoUrl(r.photoPath);
+    if (!uri) return;
+    Image.getSize(uri, (w, h) => setSize({ uri, width: w, height: h }), () => setSize({ uri, width: 4, height: 3 }));
+  }, [r]);
   if (err) return <View className="p-4"><ErrorBox text={err} /></View>;
   if (!r) return <View className="p-8"><ActivityIndicator color={C.primary} /></View>;
-  return <ResultView result={r} onBack={onBack} />;
+  return <ResultView result={r} onBack={onBack} photo={size} />;
 }
 
 // ----- профиль -----
