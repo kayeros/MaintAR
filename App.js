@@ -87,17 +87,23 @@ function Secondary({ title, icon, onPress, className = '' }) {
   );
 }
 // Пароль можно показать кнопкой-глазом: скрытое поле пароля Android прячет при показе экрана.
-function Field({ label, icon, secure, ...props }) {
-  const [show, setShow] = useState(false);
+// noAutofill: поле без подсказок автозаполнения (Android 15 по ним тоже прячет экран при трансляции).
+const NO_AUTOFILL = { autoComplete: 'off', textContentType: 'none', importantForAutofill: 'no' };
+function Field({ label, icon, secure, show: showProp, onToggleShow, noAutofill, ...props }) {
+  const [showOwn, setShowOwn] = useState(false);
+  const show = onToggleShow ? !!showProp : showOwn;
+  const toggle = onToggleShow || (() => setShowOwn(!showOwn));
+  const plain = (!!secure && show) || noAutofill;
+  const extra = plain ? { ...NO_AUTOFILL, ...(secure && Platform.OS === 'android' ? { keyboardType: 'visible-password' } : {}) } : {};
   return (
     <View className="gap-1.5">
       {!!label && <Text className={T.cap}>{label}</Text>}
       <View className="flex-row items-center gap-2.5 border border-line rounded-xl px-3 h-12 bg-surface">
         {!!icon && <Ionicons name={icon} size={20} color={C.muted} />}
         <TextInput className="flex-1 text-[17px] text-fg" placeholderTextColor={C.muted} autoCapitalize="none"
-          autoCorrect={false} secureTextEntry={!!secure && !show} {...props} />
+          autoCorrect={false} secureTextEntry={!!secure && !show} {...props} {...extra} />
         {!!secure && (
-          <Pressable onPress={() => setShow(!show)} hitSlop={8} accessibilityLabel={show ? 'Скрыть пароль' : 'Показать пароль'} className="w-10 h-10 items-center justify-center">
+          <Pressable onPress={toggle} hitSlop={8} accessibilityLabel={show ? 'Скрыть пароль' : 'Показать пароль'} className="w-10 h-10 items-center justify-center">
             <Ionicons name={show ? 'eye-off-outline' : 'eye-outline'} size={22} color={C.muted} />
           </Pressable>
         )}
@@ -138,6 +144,8 @@ function AuthScreen({ onDone }) {
   const [mode, setMode] = useState('login');
   const [f, setF] = useState({ name: '', email: '', password: '', password2: '' });
   const [note, setNote] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const pw = { show: showPw, onToggleShow: () => setShowPw(!showPw) };
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const set = (k) => (v) => { setF({ ...f, [k]: v }); setErr(''); setNote(''); };
@@ -172,12 +180,12 @@ function AuthScreen({ onDone }) {
         <View className="px-4 -mt-9">
           <View className="bg-surface rounded-2xl p-5 gap-4 border border-divider">
             <Text className={T.title}>{reg ? 'Регистрация' : 'Вход'}</Text>
-            {reg && <Field label="Имя" icon="person-outline" value={f.name} onChangeText={set('name')} autoCapitalize="words" placeholder="Иван Иванов" />}
-            <Field label={reg ? 'Почта' : 'Логин или почта'} icon={reg ? 'mail-outline' : 'person-outline'} value={f.email} onChangeText={set('email')}
+            {reg && <Field label="Имя" icon="person-outline" noAutofill={showPw} value={f.name} onChangeText={set('name')} autoCapitalize="words" placeholder="Иван Иванов" />}
+            <Field label={reg ? 'Почта' : 'Логин или почта'} icon={reg ? 'mail-outline' : 'person-outline'} value={f.email} onChangeText={set('email')} noAutofill={showPw}
               keyboardType={reg ? 'email-address' : 'default'} autoCapitalize="none" autoCorrect={false} placeholder="name@company.ru" />
-            <Field label="Пароль" icon="lock-closed-outline" secure value={f.password} onChangeText={set('password')} placeholder="Пароль" onSubmitEditing={reg ? undefined : submit} />
+            <Field label="Пароль" icon="lock-closed-outline" secure {...pw} value={f.password} onChangeText={set('password')} placeholder="Пароль" onSubmitEditing={reg ? undefined : submit} />
             {reg && <Text className={`${T.cap} -mt-2`}>Не меньше 6 символов</Text>}
-            {reg && <Field label="Повторите пароль" icon="lock-closed-outline" secure value={f.password2} onChangeText={set('password2')} placeholder="Пароль ещё раз" onSubmitEditing={submit} />}
+            {reg && <Field label="Повторите пароль" icon="lock-closed-outline" secure {...pw} value={f.password2} onChangeText={set('password2')} placeholder="Пароль ещё раз" onSubmitEditing={submit} />}
             {!!note && <View className="bg-ok-bg rounded-xl p-3"><Text className="text-[16px] text-ok">{note}</Text></View>}
             <ErrorBox text={err} />
             <Primary title={reg ? 'Зарегистрироваться' : 'Войти'} onPress={submit} busy={busy} />
@@ -206,6 +214,8 @@ function ForgotScreen({ login, onBack }) {
   const [p2, setP2] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const pw = { show: showPw, onToggleShow: () => setShowPw(!showPw) };
   const { top } = useSafeAreaInsets();
   const getCode = async () => {
     if (!email.trim()) return setErr('Введите почту или логин');
@@ -225,7 +235,7 @@ function ForgotScreen({ login, onBack }) {
       <ScrollView contentContainerClassName="grow p-4 gap-4 pb-8" keyboardShouldPersistTaps="handled" style={{ paddingTop: top + 12 }}>
         <View className="bg-surface rounded-2xl p-5 gap-4 border border-divider">
           <Text className={T.title}>Восстановление пароля</Text>
-          <Field label="Почта или логин" icon="mail-outline" value={email} onChangeText={(v) => { setEmail(v); setErr(''); setSent(false); }}
+          <Field label="Почта или логин" icon="mail-outline" noAutofill={showPw} value={email} onChangeText={(v) => { setEmail(v); setErr(''); setSent(false); }}
             placeholder="name@company.ru" editable={!busy} />
           {!sent ? (
             <>
@@ -236,9 +246,9 @@ function ForgotScreen({ login, onBack }) {
           ) : (
             <>
               <Text className={T.cap}>Код отправлен на {api.toEmail(email)}, если такая учётная запись есть.</Text>
-              <Field label="Код из письма" icon="key-outline" value={code} onChangeText={(v) => { setCode(v); setErr(''); }} keyboardType="number-pad" placeholder="Код" />
-              <Field label="Новый пароль" icon="lock-closed-outline" secure value={p1} onChangeText={(v) => { setP1(v); setErr(''); }} placeholder="Не меньше 6 символов" />
-              <Field label="Повторите пароль" icon="lock-closed-outline" secure value={p2} onChangeText={(v) => { setP2(v); setErr(''); }} placeholder="Пароль ещё раз" onSubmitEditing={reset} />
+              <Field label="Код из письма" icon="key-outline" noAutofill={showPw} value={code} onChangeText={(v) => { setCode(v); setErr(''); }} keyboardType="number-pad" placeholder="Код" />
+              <Field label="Новый пароль" icon="lock-closed-outline" secure {...pw} value={p1} onChangeText={(v) => { setP1(v); setErr(''); }} placeholder="Не меньше 6 символов" />
+              <Field label="Повторите пароль" icon="lock-closed-outline" secure {...pw} value={p2} onChangeText={(v) => { setP2(v); setErr(''); }} placeholder="Пароль ещё раз" onSubmitEditing={reset} />
               <ErrorBox text={err} />
               <Primary title="Сменить пароль" icon="checkmark" onPress={reset} busy={busy} />
               <Pressable onPress={getCode} className="self-center min-h-[44px] justify-center"><Text className="text-[16px] text-primary">Отправить код ещё раз</Text></Pressable>
