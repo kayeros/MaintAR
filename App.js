@@ -129,14 +129,17 @@ function Header({ title, onBack, right }) {
 // ----- вход, регистрация, подтверждение почты -----
 function AuthScreen({ onDone }) {
   const [mode, setMode] = useState('login');
-  const [f, setF] = useState({ name: '', email: '', password: '' });
+  const [f, setF] = useState({ name: '', email: '', password: '', password2: '' });
+  const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const set = (k) => (v) => { setF({ ...f, [k]: v }); setErr(''); };
+  const set = (k) => (v) => { setF({ ...f, [k]: v }); setErr(''); setNote(''); };
   const submit = async () => {
     const v = f;
     if (!v.email.trim() || !v.password) return setErr(mode === 'login' ? 'Введите логин и пароль' : 'Введите почту и пароль');
     if (mode === 'register' && !v.name.trim()) return setErr('Введите имя');
+    if (mode === 'register' && v.password.length < 6) return setErr('Пароль должен быть не короче 6 символов');
+    if (mode === 'register' && v.password !== v.password2) return setErr('Пароли не совпадают');
     setBusy(true); setErr('');
     try {
       const u = mode === 'login' ? await api.login(v.email.trim(), v.password) : await api.register(v.name.trim(), v.email.trim(), v.password);
@@ -146,6 +149,9 @@ function AuthScreen({ onDone }) {
   };
   const reg = mode === 'register';
   const { top } = useSafeAreaInsets();
+  if (mode === 'forgot') {
+    return <ForgotScreen login={f.email} onBack={(login, done) => { setMode('login'); setErr(''); setF({ ...f, email: login || f.email, password: '', password2: '' }); setNote(done ? 'Пароль изменён. Войдите с новым паролем.' : ''); }} />;
+  }
   return (
     <KeyboardAvoidingView className="flex-1 bg-bg" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerClassName="grow pb-8" keyboardShouldPersistTaps="handled">
@@ -162,14 +168,78 @@ function AuthScreen({ onDone }) {
             {reg && <Field label="Имя" icon="person-outline" value={f.name} onChangeText={set('name')} autoCapitalize="words" placeholder="Иван Иванов" />}
             <Field label={reg ? 'Почта' : 'Логин или почта'} icon={reg ? 'mail-outline' : 'person-outline'} value={f.email} onChangeText={set('email')}
               keyboardType={reg ? 'email-address' : 'default'} autoCapitalize="none" autoCorrect={false} placeholder="name@company.ru" />
-            <Field label="Пароль" icon="lock-closed-outline" secure value={f.password} onChangeText={set('password')} placeholder="Пароль" onSubmitEditing={submit} />
+            <Field label="Пароль" icon="lock-closed-outline" secure value={f.password} onChangeText={set('password')} placeholder="Пароль" onSubmitEditing={reg ? undefined : submit} />
+            {reg && <Text className={`${T.cap} -mt-2`}>Не меньше 6 символов</Text>}
+            {reg && <Field label="Повторите пароль" icon="lock-closed-outline" secure value={f.password2} onChangeText={set('password2')} placeholder="Пароль ещё раз" onSubmitEditing={submit} />}
+            {!!note && <View className="bg-ok-bg rounded-xl p-3"><Text className="text-[16px] text-ok">{note}</Text></View>}
             <ErrorBox text={err} />
             <Primary title={reg ? 'Зарегистрироваться' : 'Войти'} onPress={submit} busy={busy} />
-            <Pressable onPress={() => { setMode(reg ? 'login' : 'register'); setErr(''); }} className="self-center min-h-[44px] justify-center">
+            {!reg && (
+              <Pressable onPress={() => { setMode('forgot'); setErr(''); setNote(''); }} className="self-center min-h-[44px] justify-center">
+                <Text className="text-[16px] text-primary">Забыли пароль?</Text>
+              </Pressable>
+            )}
+            <Pressable onPress={() => { setMode(reg ? 'login' : 'register'); setErr(''); setNote(''); }} className="self-center min-h-[44px] justify-center">
               <Text className="text-[17px] text-muted text-center">{reg ? 'Уже есть учётная запись? ' : 'Нет учётной записи? '}
                 <Text className="text-primary font-semibold">{reg ? 'Войти' : 'Зарегистрироваться'}</Text></Text>
             </Pressable>
           </View>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+// Восстановление пароля: почта → код из письма → новый пароль.
+function ForgotScreen({ login, onBack }) {
+  const [email, setEmail] = useState(login || '');
+  const [sent, setSent] = useState(false);
+  const [code, setCode] = useState('');
+  const [p1, setP1] = useState('');
+  const [p2, setP2] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const { top } = useSafeAreaInsets();
+  const getCode = async () => {
+    if (!email.trim()) return setErr('Введите почту или логин');
+    setBusy(true); setErr('');
+    try { await api.forgotPassword(email); setSent(true); } catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
+  const reset = async () => {
+    if (!code.trim()) return setErr('Введите код из письма');
+    if (p1.length < 6) return setErr('Пароль должен быть не короче 6 символов');
+    if (p1 !== p2) return setErr('Пароли не совпадают');
+    setBusy(true); setErr('');
+    try { await api.resetPassword(email, code, p1); onBack(email.trim(), true); } catch (e) { setErr(e.message); setBusy(false); }
+  };
+  return (
+    <KeyboardAvoidingView className="flex-1 bg-bg" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerClassName="grow p-4 gap-4 pb-8" keyboardShouldPersistTaps="handled" style={{ paddingTop: top + 12 }}>
+        <View className="bg-surface rounded-2xl p-5 gap-4 border border-divider">
+          <Text className={T.title}>Восстановление пароля</Text>
+          <Field label="Почта или логин" icon="mail-outline" value={email} onChangeText={(v) => { setEmail(v); setErr(''); setSent(false); }}
+            placeholder="name@company.ru" editable={!busy} />
+          {!sent ? (
+            <>
+              <Text className={T.cap}>Пришлём код на почту.</Text>
+              <ErrorBox text={err} />
+              <Primary title="Получить код" icon="mail" onPress={getCode} busy={busy} />
+            </>
+          ) : (
+            <>
+              <Text className={T.cap}>Код отправлен на {api.toEmail(email)}, если такая учётная запись есть.</Text>
+              <Field label="Код из письма" icon="key-outline" value={code} onChangeText={(v) => { setCode(v); setErr(''); }} keyboardType="number-pad" placeholder="Код" />
+              <Field label="Новый пароль" icon="lock-closed-outline" secure value={p1} onChangeText={(v) => { setP1(v); setErr(''); }} placeholder="Не меньше 6 символов" />
+              <Field label="Повторите пароль" icon="lock-closed-outline" secure value={p2} onChangeText={(v) => { setP2(v); setErr(''); }} placeholder="Пароль ещё раз" onSubmitEditing={reset} />
+              <ErrorBox text={err} />
+              <Primary title="Сменить пароль" icon="checkmark" onPress={reset} busy={busy} />
+              <Pressable onPress={getCode} className="self-center min-h-[44px] justify-center"><Text className="text-[16px] text-primary">Отправить код ещё раз</Text></Pressable>
+            </>
+          )}
+          <Pressable onPress={() => onBack('', false)} className="self-center min-h-[44px] justify-center">
+            <Text className="text-[17px] text-primary font-semibold">Назад ко входу</Text>
+          </Pressable>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

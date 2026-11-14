@@ -69,6 +69,8 @@ const ERRORS = {
   'Date cannot be in the future': 'Дата не может быть в будущем',
   'Component not found': 'Узел не найден',
   'Record not found': 'Запись не найдена',
+  'Password must be at least 6 characters long': 'Пароль должен быть не короче 6 символов',
+  'Invalid email format': 'Неверный формат почты',
 };
 
 function messageFrom(status, body) {
@@ -124,6 +126,11 @@ export async function register(userName, email, password) {
   await saveSession(r.token, user);
   return { ...user, verified: readToken(r.token).verified };
 }
+
+// Восстановление пароля: код на почту, затем новый пароль.
+export const forgotPassword = (login) => request('/api/Auth/forgot-password', { method: 'POST', json: { email: toEmail(login) }, auth: false });
+export const resetPassword = (login, code, newPassword) =>
+  request('/api/Auth/reset-password', { method: 'POST', json: { email: toEmail(login), code: code.trim(), newPassword }, auth: false });
 
 export const sendCode = () => request('/api/Auth/send-verification-code', { method: 'POST' });
 
