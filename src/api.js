@@ -109,7 +109,6 @@ export async function request(path, { method = 'GET', json, form, auth = true, t
 // ----- вход и регистрация -----
 // Короткий логин без «@» — это учётка в домене maintar.local (demo → demo@maintar.local).
 export const toEmail = (login) => { const v = String(login || '').trim(); return v.includes('@') ? v : `${v.toLowerCase()}@maintar.local`; };
-export const DEMO = { login: 'demo', password: 'demo12345' };
 
 export async function login(loginOrEmail, password) {
   const email = toEmail(loginOrEmail);
