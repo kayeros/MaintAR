@@ -336,7 +336,9 @@ function FindEquipment({ user, onFound, onScan, version }) {
         {recent.map((e, i) => (
           <View key={e.code} className={`flex-row items-center gap-3 py-2 ${i === recent.length - 1 ? '' : 'border-b border-divider'}`}>
             <Pressable onPress={() => find(e.code, e.method)} className="flex-1 flex-row items-center gap-3 min-h-[48px] active:opacity-60">
-              <View className="w-10 h-10 rounded-full bg-primary-soft items-center justify-center"><Ionicons name="construct-outline" size={22} color={C.primary} /></View>
+              {e.photoUrl
+                ? <Image source={{ uri: api.photoUrl(e.photoUrl) }} style={{ width: 48, height: 48, borderRadius: 10 }} />
+                : <View className="w-12 h-12 rounded-xl bg-primary-soft items-center justify-center"><Ionicons name="construct-outline" size={24} color={C.primary} /></View>}
               <View className="flex-1 gap-0.5">
                 <Text className={T.bodyB}>{e.name}</Text>
                 <Text className={T.cap}>{e.model} · {e.code}</Text>
@@ -485,7 +487,9 @@ function RecordWork({ components, preset, onSaved }) {
 }
 
 // ----- оборудование: карточка -----
-function EquipmentCard({ id, onInspect, onComponent, onRecord, onJournal, version }) {
+function EquipmentCard({ id, onInspect, onComponent, onRecord, onJournal, onPhotoChanged, version }) {
+  const [uploading, setUploading] = useState(false);
+  const [photoErr, setPhotoErr] = useState('');
   const [d, setD] = useState(null);
   const [err, setErr] = useState('');
   const [works, setWorks] = useState(null);
@@ -495,8 +499,42 @@ function EquipmentCard({ id, onInspect, onComponent, onRecord, onJournal, versio
   if (!d) return <View className="p-8"><ActivityIndicator color={C.primary} /></View>;
   const rep = d.report;
   const k = reportStatus(rep.status);
+  const setPhoto = async (fromCamera) => {
+    setPhotoErr('');
+    try {
+      const opts = { mediaTypes: ['images'], quality: 0.5 };
+      if (fromCamera && Platform.OS !== 'web') {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) return setPhotoErr('Нет доступа к камере. Разрешите его в настройках телефона.');
+      }
+      const r = fromCamera ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
+      if (r.canceled || !r.assets?.[0]) return;
+      setUploading(true);
+      const res = await api.uploadEquipmentPhoto(d.id, { uri: r.assets[0].uri });
+      setD({ ...d, photoUrl: res.photoUrl });
+      onPhotoChanged && onPhotoChanged(d, res.photoUrl);
+    } catch (e) { setPhotoErr(e.message); }
+    setUploading(false);
+  };
   return (
     <ScrollView contentContainerClassName="p-4 gap-4 pb-8">
+      <View className={CARD}>
+        {d.photoUrl
+          ? <Image source={{ uri: api.photoUrl(d.photoUrl) }} style={{ width: '100%', aspectRatio: 4 / 3, borderRadius: 12, backgroundColor: C.sunken }} resizeMode="cover" />
+          : (
+            <View className="w-full rounded-xl bg-sunken items-center justify-center gap-2" style={{ aspectRatio: 16 / 9 }}>
+              <Ionicons name="image-outline" size={36} color={C.muted} />
+              <Text className={T.cap}>Фото оборудования нет</Text>
+            </View>
+          )}
+        {uploading ? <ActivityIndicator color={C.primary} /> : (
+          <View className="flex-row gap-2">
+            <Secondary title={d.photoUrl ? 'Переснять' : 'Сфотографировать'} icon="camera-outline" onPress={() => setPhoto(true)} className="flex-1" />
+            <Secondary title="Из галереи" icon="images-outline" onPress={() => setPhoto(false)} className="flex-1" />
+          </View>
+        )}
+        <ErrorBox text={photoErr} />
+      </View>
       <View className={CARD}>
         <Text className={T.title}>{d.name}</Text>
         <Badge k={k} />
@@ -784,7 +822,7 @@ export default function App() {
   // Найдено по QR или номеру: запоминаем у пользователя и открываем карточку.
   async function onFound(report, value, method) {
     const e = report.equipment;
-    await api.addRecent(user.email, { id: e.id, code: e.code, name: e.name, model: e.model, method });
+    await api.addRecent(user.email, { id: e.id, code: e.code, name: e.name, model: e.model, method, photoUrl: e.photoUrl });
     setVersion((x) => x + 1);
     push({ kind: 'card', id: e.id, target: { value, method } });
   }
@@ -816,7 +854,8 @@ export default function App() {
         onInspect={(d) => startInspection({ ...top.target, value: top.target?.value || d.code, name: d.name })}
         onComponent={(c, d) => push({ kind: 'component', component: c, eqInstalled: d.installedAt, equipmentId: d.id, components: d.components })}
         onRecord={(d, cid) => push({ kind: 'record', components: d.components, preset: cid })}
-        onJournal={(d) => push({ kind: 'journal', equipmentId: d.id })} />;
+        onJournal={(d) => push({ kind: 'journal', equipmentId: d.id })}
+        onPhotoChanged={(d, url) => api.addRecent(user.email, { id: d.id, code: d.code, name: d.name, model: d.model, method: top.target?.method || 'Manual', photoUrl: url })} />;
     } else if (top.kind === 'component') {
       title = 'Узел';
       body = <ComponentScreen component={top.component} eqInstalled={top.eqInstalled} version={version}

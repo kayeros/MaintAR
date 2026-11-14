@@ -177,19 +177,30 @@ export async function createInspection(photo, value, method) {
     form.append('IdentificationMethod', method);
     return request('/api/Inspections', { method: 'POST', form, timeout: 120000 });
   }
-  return uploadNative(photo, value, method);
+  return uploadNative('/api/Inspections', 'Photo', photo, { Value: value, IdentificationMethod: method });
 }
+
+// Фото оборудования для карточки.
+export async function uploadEquipmentPhoto(id, photo) {
+  const path = `/api/Equipment/${id}/photo`;
+  if (Platform.OS === 'web') {
+    const form = new FormData();
+    form.append('photo', await (await fetch(photo.uri)).blob(), 'photo.jpg');
+    return request(path, { method: 'POST', form, timeout: 120000 });
+  }
+  return uploadNative(path, 'photo', photo, {});
+}
+export const photoUrl = (p) => (p ? (p.startsWith('http') ? p : baseUrl + p) : null);
 
 // Телефон: fetch из Expo не принимает файл объектом {uri, name, type},
 // а XMLHttpRequest React Native умеет отправлять его в multipart.
-function uploadNative(photo, value, method) {
+function uploadNative(path, field, photo, fields) {
   return new Promise((resolve, reject) => {
     const form = new FormData();
-    form.append('Photo', { uri: photo.uri, name: 'photo.jpg', type: 'image/jpeg' });
-    form.append('Value', value);
-    form.append('IdentificationMethod', method);
+    form.append(field, { uri: photo.uri, name: 'photo.jpg', type: 'image/jpeg' });
+    Object.entries(fields).forEach(([k, v]) => form.append(k, v));
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${baseUrl}/api/Inspections`);
+    xhr.open('POST', `${baseUrl}${path}`);
     xhr.setRequestHeader('Accept', 'application/json');
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
     xhr.timeout = 120000;
