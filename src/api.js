@@ -65,6 +65,10 @@ const ERRORS = {
   'Invalid or expired code': 'Неверный или просроченный код',
   'Equipment not found': 'Оборудование с таким кодом не найдено',
   'File must be an image': 'Нужна фотография',
+  'Comment is required for Note': 'Для заметки нужен комментарий',
+  'Date cannot be in the future': 'Дата не может быть в будущем',
+  'Component not found': 'Узел не найден',
+  'Record not found': 'Запись не найдена',
 };
 
 function messageFrom(status, body) {
@@ -131,6 +135,20 @@ export const getEquipment = (id) => request(`/api/Equipment/${id}`);
 export const identify = (value) => request(`/api/Equipment/identify?value=${encodeURIComponent(value)}`);
 export const myInspections = () => request('/api/Inspections/my?pageSize=50');
 export const getInspection = (id) => request(`/api/Inspections/${id}`);
+
+// ----- журнал работ по узлам -----
+export const MAINT_TYPES = [
+  ['Checked', 'Проверил', 'checkmark-circle-outline'],
+  ['Serviced', 'Обслужил', 'construct-outline'],
+  ['Replaced', 'Заменил', 'refresh-outline'],
+  ['Note', 'Заметка', 'create-outline'],
+];
+export const addMaintenance = (componentId, type, comment, date) =>
+  request('/api/Maintenance', { method: 'POST', json: { componentId, type, comment: comment || null, date: date || null } });
+export const maintenanceByEquipment = (id) => request(`/api/Maintenance/equipment/${id}`);
+export const maintenanceByComponent = (id) => request(`/api/Maintenance/component/${id}`);
+export const myMaintenance = () => request('/api/Maintenance/my');
+export const deleteMaintenance = (id) => request(`/api/Maintenance/${id}`, { method: 'DELETE' });
 
 export async function createInspection(photo, value, method) {
   if (Platform.OS === 'web') {

@@ -361,11 +361,145 @@ function EquipmentList({ onOpen, onScan }) {
   );
 }
 
+// ----- журнал работ -----
+const MAINT = Object.fromEntries(api.MAINT_TYPES.map(([k, w, i]) => [k, { word: w, icon: i }]));
+// Остаток ресурса узла: срок службы от последней замены (или установки).
+function lifeLeft(c, eqInstalled) {
+  if (!c.serviceLifeMonths) return null;
+  const from = c.lastReplacedAt || c.installedAt || eqInstalled;
+  if (!from) return { text: `Срок службы ${c.serviceLifeMonths} мес., дата установки неизвестна`, k: 'none' };
+  const start = new Date(from);
+  const end = new Date(start); end.setMonth(end.getMonth() + c.serviceLifeMonths);
+  const left = Math.round((end - Date.now()) / (30.44 * 864e5));
+  const k = left <= 0 ? 'defect' : left < c.serviceLifeMonths * 0.2 ? 'check' : 'ok';
+  return { text: left <= 0 ? `Срок службы истёк ${-left} мес. назад` : `Осталось ~${left} мес. из ${c.serviceLifeMonths}`, k };
+}
+function WorkRow({ w, showComponent, onDelete, last }) {
+  const m = MAINT[w.type] || { word: w.type, icon: 'document-text-outline' };
+  return (
+    <View className={`flex-row gap-3 py-3 ${last ? '' : 'border-b border-divider'}`}>
+      <View className="w-10 h-10 rounded-full bg-primary-soft items-center justify-center"><Ionicons name={m.icon} size={22} color={C.primary} /></View>
+      <View className="flex-1 gap-0.5">
+        <Text className={T.bodyB}>{m.word}{showComponent && w.componentName ? `: ${w.componentName}` : ''}</Text>
+        {!!w.comment && <Text className={T.body}>{w.comment}</Text>}
+        <Text className={T.cap}>{fmtDate(w.date)}{w.userName ? ` · ${w.userName}` : ''}{showComponent === 'equipment' && w.equipmentName ? ` · ${w.equipmentName}` : ''}</Text>
+      </View>
+      {onDelete && (
+        <Pressable onPress={() => onDelete(w)} hitSlop={8} accessibilityLabel="Удалить запись" className="w-11 h-11 items-center justify-center">
+          <Ionicons name="trash-outline" size={22} color={C.defect} />
+        </Pressable>
+      )}
+    </View>
+  );
+}
+function WorkList({ items, showComponent, onDelete, empty }) {
+  if (!items) return <ActivityIndicator color={C.primary} />;
+  if (!items.length) return <Text className={T.cap}>{empty || 'Записей пока нет'}</Text>;
+  return <View>{items.map((w, i) => <WorkRow key={w.id} w={w} showComponent={showComponent} onDelete={onDelete} last={i === items.length - 1} />)}</View>;
+}
+
+// Экран узла: ресурс, журнал работ, кнопка записи.
+function ComponentScreen({ component, eqInstalled, onRecord, version }) {
+  const [items, setItems] = useState(null);
+  const [err, setErr] = useState('');
+  useEffect(() => { api.maintenanceByComponent(component.id).then(setItems).catch((e) => { setErr(e.message); setItems([]); }); }, [component.id, version]);
+  const life = lifeLeft(component, eqInstalled);
+  return (
+    <ScrollView contentContainerClassName="p-4 gap-4 pb-8">
+      <View className={CARD}>
+        <Text className={T.title}>{component.name}</Text>
+        {life && <Badge k={life.k} text={life.text} />}
+        <Text className={T.cap}>{component.lastReplacedAt ? `Последняя замена: ${component.lastReplacedAt}` : component.installedAt ? `Установлен: ${component.installedAt}` : 'Замен не было'}</Text>
+      </View>
+      <Primary title="Записать работу" icon="create" onPress={() => onRecord(component)} />
+      <View className={CARD}>
+        <Text className={T.bodyB}>Журнал работ по узлу</Text>
+        <ErrorBox text={err} />
+        <WorkList items={items} />
+      </View>
+    </ScrollView>
+  );
+}
+
+// Запись работы: узел, тип, комментарий, дата (сейчас или прошлый день).
+const WHEN = [['Сейчас', 0], ['Вчера', 1], ['2 дня назад', 2], ['Неделю назад', 7]];
+function RecordWork({ components, preset, onSaved }) {
+  const [comp, setComp] = useState(preset || (components.length === 1 ? components[0].id : null));
+  const [type, setType] = useState('Checked');
+  const [comment, setComment] = useState('');
+  const [daysAgo, setDaysAgo] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const save = async () => {
+    if (!comp) return setErr('Выберите узел');
+    if (type === 'Note' && !comment.trim()) return setErr('Для заметки нужен комментарий');
+    setBusy(true); setErr('');
+    try {
+      const date = daysAgo ? new Date(Date.now() - daysAgo * 864e5).toISOString() : null;
+      await api.addMaintenance(comp, type, comment.trim(), date);
+      onSaved(type);
+    } catch (e) { setErr(e.message); setBusy(false); }
+  };
+  return (
+    <ScrollView contentContainerClassName="p-4 gap-4 pb-8" keyboardShouldPersistTaps="handled">
+      {!preset && (
+        <View className={CARD}>
+          <Text className={T.bodyB}>Узел</Text>
+          <View className="gap-2">
+            {components.map((c) => (
+              <Pressable key={c.id} onPress={() => { setComp(c.id); setErr(''); }}
+                className={`min-h-[48px] flex-row items-center gap-3 px-3 rounded-xl border ${comp === c.id ? 'border-primary bg-primary-soft' : 'border-line'}`}>
+                <Ionicons name={comp === c.id ? 'radio-button-on' : 'radio-button-off'} size={22} color={comp === c.id ? C.primary : C.muted} />
+                <Text className={T.body}>{c.name}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      )}
+      {preset && <View className={CARD}><Text className={T.cap}>Узел</Text><Text className={T.bodyB}>{(components.find((c) => c.id === preset) || {}).name || `№${preset}`}</Text></View>}
+      <View className={CARD}>
+        <Text className={T.bodyB}>Что сделали</Text>
+        <View className="flex-row flex-wrap gap-2">
+          {api.MAINT_TYPES.map(([k, word, icon]) => (
+            <Pressable key={k} onPress={() => { setType(k); setErr(''); }}
+              className={`w-[48%] h-16 rounded-xl border flex-row items-center justify-center gap-2 ${type === k ? 'bg-primary border-primary' : 'bg-surface border-line'}`}>
+              <Ionicons name={icon} size={24} color={type === k ? '#fff' : C.primary} />
+              <Text className={`text-[17px] font-semibold ${type === k ? 'text-white' : 'text-primary'}`}>{word}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {type === 'Replaced' && <Text className={T.cap}>После записи ресурс узла начнёт отсчитываться заново.</Text>}
+      </View>
+      <View className={CARD}>
+        <Text className={T.bodyB}>Комментарий{type === 'Note' ? ' (обязательно)' : ''}</Text>
+        <TextInput className="border border-line rounded-xl p-3 text-[17px] text-fg bg-surface min-h-[96px]" style={{ textAlignVertical: 'top' }}
+          multiline value={comment} onChangeText={(v) => { setComment(v); setErr(''); }}
+          placeholder={type === 'Note' ? 'Опишите, что заметили' : 'Что сделали, какие детали заменили'} placeholderTextColor={C.muted} />
+      </View>
+      <View className={CARD}>
+        <Text className={T.bodyB}>Когда</Text>
+        <View className="flex-row flex-wrap gap-2">
+          {WHEN.map(([w, d]) => (
+            <Pressable key={d} onPress={() => setDaysAgo(d)}
+              className={`min-h-[44px] px-4 justify-center rounded-xl border ${daysAgo === d ? 'bg-primary border-primary' : 'bg-surface border-line'}`}>
+              <Text className={`text-[16px] ${daysAgo === d ? 'text-white font-semibold' : 'text-fg'}`}>{w}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+      <ErrorBox text={err} />
+      <Primary title="Сохранить" icon="checkmark" onPress={save} busy={busy} />
+    </ScrollView>
+  );
+}
+
 // ----- оборудование: карточка -----
-function EquipmentCard({ id, onInspect }) {
+function EquipmentCard({ id, onInspect, onComponent, onRecord, onJournal, version }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState('');
-  useEffect(() => { api.getEquipment(id).then(setD).catch((e) => setErr(e.message)); }, [id]);
+  const [works, setWorks] = useState(null);
+  useEffect(() => { api.getEquipment(id).then(setD).catch((e) => setErr(e.message)); }, [id, version]);
+  useEffect(() => { api.maintenanceByEquipment(id).then(setWorks).catch(() => setWorks([])); }, [id, version]);
   if (err) return <View className="p-4"><ErrorBox text={err} /></View>;
   if (!d) return <View className="p-8"><ActivityIndicator color={C.primary} /></View>;
   const rep = d.report;
@@ -389,16 +523,32 @@ function EquipmentCard({ id, onInspect }) {
         {!!d.description && <Text className={T.cap}>{d.description}</Text>}
       </View>
       <View className={CARD}>
-        <Text className={T.bodyB}>Узлы</Text>
-        {d.components.map((c, i) => (
-          <View key={c.id} className={`py-2 ${i === d.components.length - 1 ? '' : 'border-b border-divider'}`}>
-            <Text className={T.body}>{c.name}</Text>
-            <Text className={T.cap}>
-              {c.serviceLifeMonths ? `Срок службы ${c.serviceLifeMonths} мес.` : 'Срок службы не задан'}
-              {c.lastReplacedAt ? ` · замена ${c.lastReplacedAt}` : c.installedAt ? ` · установлен ${c.installedAt}` : ''}
-            </Text>
-          </View>
-        ))}
+        <Text className={T.bodyB}>Узлы и ресурс</Text>
+        {d.components.map((c, i) => {
+          const life = lifeLeft(c, d.installedAt);
+          const k = life ? life.k : 'none';
+          return (
+            <Pressable key={c.id} onPress={() => onComponent(c, d)}
+              className={`flex-row items-center gap-3 py-3 active:opacity-60 ${i === d.components.length - 1 ? '' : 'border-b border-divider'}`}>
+              <View className={`w-3 h-3 rounded-full`} style={{ backgroundColor: ST[k].color }} />
+              <View className="flex-1 gap-0.5">
+                <Text className={T.body}>{c.name}</Text>
+                <Text className={T.cap}>{life ? life.text : 'Срок службы не задан'}{c.lastReplacedAt ? ` · замена ${c.lastReplacedAt}` : ''}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={22} color={C.muted} />
+            </Pressable>
+          );
+        })}
+        <Secondary title="Записать работу" icon="create-outline" onPress={() => onRecord(d, null)} />
+      </View>
+      <View className={CARD}>
+        <View className="flex-row items-center justify-between">
+          <Text className={T.bodyB}>Журнал работ</Text>
+          {works && works.length > 5 && (
+            <Pressable onPress={() => onJournal(d)} hitSlop={8} className="min-h-[44px] justify-center"><Text className="text-[16px] text-primary font-semibold">Весь журнал</Text></Pressable>
+          )}
+        </View>
+        <WorkList items={works && works.slice(0, 5)} showComponent />
       </View>
       {d.defectTypes.length > 0 && (
         <View className={CARD}>
@@ -411,7 +561,7 @@ function EquipmentCard({ id, onInspect }) {
 }
 
 // ----- анализ и результат -----
-function ResultView({ result, photo, onRetry, onBack }) {
+function ResultView({ result, photo, onRetry, onBack, onRecord }) {
   const s = result.summary;
   if (s.status === 'Failed') {
     return (
@@ -440,13 +590,19 @@ function ResultView({ result, photo, onRetry, onBack }) {
       </View>
       {photo && <PhotoBoxes photo={photo} findings={flat} />}
       <Findings components={result.components} />
+      {onRecord && k === 'defect' && (
+        <Primary title="Записать работу по узлу" icon="create" onPress={() => {
+          const c = (result.components || []).find((x) => (x.findings || []).some((f) => f.category !== 'NoVisibleProblems'));
+          onRecord(s.equipmentId, c ? c.componentId : null);
+        }} />
+      )}
       <Text className={`${T.cap} text-center`}>Предварительный осмотр. Решение принимает инженер.</Text>
       <Secondary title="Готово" icon="checkmark" onPress={onBack} />
     </ScrollView>
   );
 }
 
-function Analyze({ photo, target, onBack }) {
+function Analyze({ photo, target, onBack, onRecord }) {
   const [state, setState] = useState({ busy: true, result: null, err: '' });
   const run = useCallback(async () => {
     setState({ busy: true, result: null, err: '' });
@@ -473,11 +629,51 @@ function Analyze({ photo, target, onBack }) {
       </View>
     );
   }
-  return <ResultView result={state.result} photo={photo} onRetry={run} onBack={onBack} />;
+  return <ResultView result={state.result} photo={photo} onRetry={run} onBack={onBack} onRecord={onRecord} />;
 }
 
 // ----- история -----
 function History({ onOpen }) {
+  const [seg, setSeg] = useState('inspections');
+  return (
+    <View className="flex-1">
+      <View className="flex-row mx-4 mt-4 p-1 bg-sunken rounded-xl">
+        {[['inspections', 'Осмотры'], ['works', 'Мои работы']].map(([k, w]) => (
+          <Pressable key={k} onPress={() => setSeg(k)} className={`flex-1 h-11 rounded-lg items-center justify-center ${seg === k ? 'bg-surface' : ''}`}>
+            <Text className={`text-[16px] ${seg === k ? 'text-primary font-semibold' : 'text-muted'}`}>{w}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {seg === 'inspections' ? <Inspections onOpen={onOpen} /> : <MyWorks />}
+    </View>
+  );
+}
+function MyWorks() {
+  const [items, setItems] = useState(null);
+  const [err, setErr] = useState('');
+  const [confirm, setConfirm] = useState(null);
+  const load = useCallback(() => api.myMaintenance().then(setItems).catch((e) => { setErr(e.message); setItems([]); }), []);
+  useEffect(() => { load(); }, [load]);
+  const del = async () => {
+    try { await api.deleteMaintenance(confirm.id); setConfirm(null); load(); } catch (e) { setErr(e.message); setConfirm(null); }
+  };
+  return (
+    <ScrollView contentContainerClassName="p-4 gap-3 pb-8">
+      <ErrorBox text={err} />
+      {confirm && (
+        <View className={`${CARD} border-defect`}>
+          <Text className={T.body}>Удалить запись «{(MAINT[confirm.type] || {}).word}: {confirm.componentName}»?</Text>
+          <View className="flex-row gap-3">
+            <Pressable onPress={del} className="flex-1 h-12 rounded-xl bg-defect items-center justify-center"><Text className="text-[17px] font-semibold text-white">Удалить</Text></Pressable>
+            <Secondary title="Отмена" onPress={() => setConfirm(null)} className="flex-1" />
+          </View>
+        </View>
+      )}
+      <View className={CARD}><WorkList items={items} showComponent="equipment" onDelete={setConfirm} empty="Вы ещё не записывали работы" /></View>
+    </ScrollView>
+  );
+}
+function Inspections({ onOpen }) {
   const [items, setItems] = useState(null);
   const [err, setErr] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -546,6 +742,13 @@ function Profile({ user, onLogout }) {
   );
 }
 
+function JournalScreen({ equipmentId }) {
+  const [items, setItems] = useState(null);
+  const [err, setErr] = useState('');
+  useEffect(() => { api.maintenanceByEquipment(equipmentId).then(setItems).catch((e) => { setErr(e.message); setItems([]); }); }, [equipmentId]);
+  return <ScrollView contentContainerClassName="p-4 gap-3 pb-8"><ErrorBox text={err} /><View className={CARD}><WorkList items={items} showComponent /></View></ScrollView>;
+}
+
 // ----- приложение -----
 const TABS = [['equipment', 'Оборудование', 'construct-outline'], ['history', 'История', 'time-outline'], ['profile', 'Профиль', 'person-outline']];
 
@@ -555,6 +758,7 @@ export default function App() {
   const [tab, setTab] = useState('equipment');
   const [stack, setStack] = useState([]); // экраны поверх вкладок: {kind, ...}
   const [camera, setCamera] = useState(null); // {mode, target}
+  const [version, setVersion] = useState(0); // меняется после записи работы, чтобы карточка и журнал перечитались
   const { bottom } = useSafeAreaInsets();
 
   const logout = useCallback(async () => { await api.clearSession(); setStack([]); setUser(null); }, []);
@@ -609,7 +813,21 @@ export default function App() {
     let body = null;
     if (top.kind === 'card') {
       title = 'Карточка оборудования';
-      body = <EquipmentCard id={top.id} onInspect={(d) => startInspection({ ...top.target, value: top.target?.value || d.code, name: d.name })} />;
+      body = <EquipmentCard id={top.id} version={version}
+        onInspect={(d) => startInspection({ ...top.target, value: top.target?.value || d.code, name: d.name })}
+        onComponent={(c, d) => push({ kind: 'component', component: c, eqInstalled: d.installedAt, equipmentId: d.id, components: d.components })}
+        onRecord={(d, cid) => push({ kind: 'record', components: d.components, preset: cid })}
+        onJournal={(d) => push({ kind: 'journal', equipmentId: d.id })} />;
+    } else if (top.kind === 'component') {
+      title = 'Узел';
+      body = <ComponentScreen component={top.component} eqInstalled={top.eqInstalled} version={version}
+        onRecord={(c) => push({ kind: 'record', components: top.components, preset: c.id })} />;
+    } else if (top.kind === 'record') {
+      title = 'Записать работу';
+      body = <RecordWork components={top.components} preset={top.preset} onSaved={() => { setVersion((v) => v + 1); pop(); }} />;
+    } else if (top.kind === 'journal') {
+      title = 'Журнал работ';
+      body = <JournalScreen equipmentId={top.equipmentId} />;
     } else if (top.kind === 'choose') {
       title = 'Новый осмотр';
       body = (
@@ -624,7 +842,11 @@ export default function App() {
       );
     } else if (top.kind === 'analyze') {
       title = 'Результат осмотра';
-      body = <Analyze photo={top.photo} target={top.target} onBack={() => setStack([])} />;
+      body = <Analyze photo={top.photo} target={top.target} onBack={() => setStack([])}
+        onRecord={async (equipmentId, cid) => {
+          try { const d = await api.getEquipment(equipmentId); push({ kind: 'record', components: d.components, preset: cid }); }
+          catch (e) { push({ kind: 'error', text: e.message }); }
+        }} />;
     } else if (top.kind === 'inspection') {
       title = 'Осмотр';
       body = <InspectionView id={top.id} onBack={pop} />;
