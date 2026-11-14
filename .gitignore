@@ -45,3 +45,12 @@ yarn-error.*
 
 # скриншоты до/после (локально)
 docs/screens/
+
+# сервис анализа фото
+server/.venv/
+server/.env
+__pycache__/
+.pytest_cache/
+
+# материалы кейса (локально, не в репозиторий)
+tmp/
