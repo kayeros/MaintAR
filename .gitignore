@@ -57,3 +57,7 @@ tmp/
 
 # адрес бэкенда (локально)
 .env
+
+# сервис ИИ
+ai_service/.venv/
+ai_service/pip.log
