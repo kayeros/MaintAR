@@ -133,15 +133,43 @@ export const myInspections = () => request('/api/Inspections/my?pageSize=50');
 export const getInspection = (id) => request(`/api/Inspections/${id}`);
 
 export async function createInspection(photo, value, method) {
-  const form = new FormData();
   if (Platform.OS === 'web') {
-    // веб: FormData понимает только Blob; на телефоне файл передаётся объектом {uri, name, type}
+    // веб: FormData понимает только Blob
+    const form = new FormData();
     const blob = await (await fetch(photo.uri)).blob();
     form.append('Photo', blob, 'photo.jpg');
-  } else {
-    form.append('Photo', { uri: photo.uri, name: 'photo.jpg', type: 'image/jpeg' });
+    form.append('Value', value);
+    form.append('IdentificationMethod', method);
+    return request('/api/Inspections', { method: 'POST', form, timeout: 120000 });
   }
-  form.append('Value', value);
-  form.append('IdentificationMethod', method);
-  return request('/api/Inspections', { method: 'POST', form, timeout: 120000 });
+  return uploadNative(photo, value, method);
+}
+
+// Телефон: fetch из Expo не принимает файл объектом {uri, name, type},
+// а XMLHttpRequest React Native умеет отправлять его в multipart.
+function uploadNative(photo, value, method) {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append('Photo', { uri: photo.uri, name: 'photo.jpg', type: 'image/jpeg' });
+    form.append('Value', value);
+    form.append('IdentificationMethod', method);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${baseUrl}/api/Inspections`);
+    xhr.setRequestHeader('Accept', 'application/json');
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.timeout = 120000;
+    xhr.onload = () => {
+      const text = xhr.responseText || '';
+      let body = text;
+      try { body = text ? JSON.parse(text) : null; } catch (e) { /* текст */ }
+      if (xhr.status === 401) { onUnauthorized(); return reject(new Error('Сессия истекла, войдите снова')); }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        return reject(new Error(`${messageFrom(xhr.status, body)} (HTTP ${xhr.status}: ${text.slice(0, 200)})`));
+      }
+      resolve(body);
+    };
+    xhr.onerror = () => reject(new Error(`Нет связи с сервером ${baseUrl}. Телефон и компьютер должны быть в одной сети Wi-Fi.`));
+    xhr.ontimeout = () => reject(new Error('Сервер не ответил вовремя. Проверьте сеть.'));
+    xhr.send(form);
+  });
 }
