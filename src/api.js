@@ -88,7 +88,7 @@ export async function request(path, { method = 'GET', json, form, auth = true, t
   } catch (e) {
     throw new Error(e.name === 'AbortError'
       ? 'Сервер не ответил вовремя. Проверьте сеть.'
-      : `Нет связи с сервером ${baseUrl}. Телефон и компьютер должны быть в одной сети Wi-Fi.`);
+      : `Нет связи с сервером ${baseUrl} (${method} ${path}: ${e.name}: ${e.message}).`);
   } finally {
     clearTimeout(timer);
   }
@@ -97,7 +97,7 @@ export async function request(path, { method = 'GET', json, form, auth = true, t
   try { body = text ? JSON.parse(text) : null; } catch (e) { /* текст */ }
   if (res.status === 401 && auth) { onUnauthorized(); throw new Error('Сессия истекла, войдите снова'); }
   if (res.status === 403) throw new Error('Подтвердите почту, чтобы продолжить');
-  if (!res.ok) throw new Error(messageFrom(res.status, body));
+  if (!res.ok) throw new Error(`${messageFrom(res.status, body)} (HTTP ${res.status} ${method} ${path}: ${String(text).slice(0, 200)})`);
   return body;
 }
 
