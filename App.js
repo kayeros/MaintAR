@@ -302,7 +302,16 @@ function Findings({ components, onComponent }) {
   (components || []).forEach((c) => (c.findings || []).forEach((f) => rows.push({ ...f, componentName: c.componentName, componentId: c.componentId })));
   const problems = rows.filter((f) => f.category !== 'NoVisibleProblems');
   if (!problems.length) {
-    return <View className={CARD}><Badge k="ok" text="Видимых проблем не обнаружено" /><Text className={T.cap}>Это предварительный осмотр, он не подтверждает исправность.</Text></View>;
+    return (
+      <View className={CARD}>
+        <Badge k="ok" text="Видимых проблем не обнаружено" />
+        <View className="flex-row items-start gap-2 bg-bg rounded-xl p-3">
+          <Ionicons name="sunny-outline" size={20} color={C.primary} />
+          <Text className={`${T.body} flex-1`}>Убедитесь, что узел в кадре и хорошо освещён. Если нет — переснимите ближе.</Text>
+        </View>
+        <Text className={T.cap}>Это предварительный осмотр, он не подтверждает исправность.</Text>
+      </View>
+    );
   }
   return problems.map((f, i) => {
     const cat = CATEGORY[f.category] || CATEGORY.CheckRecommended;
