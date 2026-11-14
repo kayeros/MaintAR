@@ -116,12 +116,14 @@ function AuthScreen({ onDone }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const set = (k) => (v) => { setF({ ...f, [k]: v }); setErr(''); };
-  const submit = async () => {
-    if (!f.email.trim() || !f.password) return setErr('Введите почту и пароль');
-    if (mode === 'register' && !f.name.trim()) return setErr('Введите имя');
-    setBusy(true);
+  const submit = async (demo) => {
+    const v = demo ? { ...f, email: api.DEMO.login, password: api.DEMO.password } : f;
+    if (demo) setF(v);
+    if (!v.email.trim() || !v.password) return setErr(mode === 'login' ? 'Введите логин и пароль' : 'Введите почту и пароль');
+    if (mode === 'register' && !v.name.trim()) return setErr('Введите имя');
+    setBusy(true); setErr('');
     try {
-      const u = mode === 'login' ? await api.login(f.email.trim(), f.password) : await api.register(f.name.trim(), f.email.trim(), f.password);
+      const u = mode === 'login' || demo ? await api.login(v.email.trim(), v.password) : await api.register(v.name.trim(), v.email.trim(), v.password);
       onDone(u);
     } catch (e) { setErr(e.message); }
     setBusy(false);
@@ -142,10 +144,17 @@ function AuthScreen({ onDone }) {
           <View className="bg-surface rounded-2xl p-5 gap-4 border border-divider">
             <Text className={T.title}>{reg ? 'Регистрация' : 'Вход'}</Text>
             {reg && <Field label="Имя" icon="person-outline" value={f.name} onChangeText={set('name')} autoCapitalize="words" placeholder="Иван Иванов" />}
-            <Field label="Почта" icon="mail-outline" value={f.email} onChangeText={set('email')} keyboardType="email-address" placeholder="name@company.ru" />
-            <Field label="Пароль" icon="lock-closed-outline" secure value={f.password} onChangeText={set('password')} placeholder="Пароль" onSubmitEditing={submit} />
+            <Field label={reg ? 'Почта' : 'Логин или почта'} icon={reg ? 'mail-outline' : 'person-outline'} value={f.email} onChangeText={set('email')}
+              keyboardType={reg ? 'email-address' : 'default'} autoCapitalize="none" autoCorrect={false} placeholder={reg ? 'name@company.ru' : 'demo или name@company.ru'} />
+            <Field label="Пароль" icon="lock-closed-outline" secure value={f.password} onChangeText={set('password')} placeholder="Пароль" onSubmitEditing={() => submit(false)} />
             <ErrorBox text={err} />
-            <Primary title={reg ? 'Зарегистрироваться' : 'Войти'} onPress={submit} busy={busy} />
+            <Primary title={reg ? 'Зарегистрироваться' : 'Войти'} onPress={() => submit(false)} busy={busy} />
+            {!reg && (
+              <View className="gap-2 items-center">
+                <Text className={`${T.cap} text-center`}>Демо-доступ: {api.DEMO.login} / {api.DEMO.password}</Text>
+                <Secondary title="Войти как демо" icon="flash-outline" onPress={() => submit(true)} className="self-stretch" />
+              </View>
+            )}
             <Pressable onPress={() => { setMode(reg ? 'login' : 'register'); setErr(''); }} className="self-center min-h-[44px] justify-center">
               <Text className="text-[17px] text-muted text-center">{reg ? 'Уже есть учётная запись? ' : 'Нет учётной записи? '}
                 <Text className="text-primary font-semibold">{reg ? 'Войти' : 'Зарегистрироваться'}</Text></Text>
