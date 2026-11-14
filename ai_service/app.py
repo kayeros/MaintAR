@@ -53,6 +53,14 @@ TEXT = {
     "fastener_issue": ("Видна проблема с крепежом: коррозия, ослабление или отсутствие.",
                        "Проверить и подтянуть крепёж, заменить повреждённые элементы."),
 }
+# Русские названия классов модели — если у типа оборудования нет подходящего кода дефекта.
+NAME = {
+    "surface_corrosion": "Коррозия поверхности",
+    "pipe_crack": "Трещина",
+    "pipe_leak": "Утечка жидкости",
+    "cable_insulation_damage": "Повреждение изоляции кабеля",
+    "fastener_issue": "Проблема с крепежом",
+}
 # Ключевые слова кода дефекта (по типу оборудования из контекста).
 CODE_KEYS = {
     "cable_insulation_damage": ["CABLE_INSULATION", "INSULATION"],
@@ -159,9 +167,12 @@ async def analyze(photo: UploadFile = File(...), context: str = Form("{}")):
             if comp is None:
                 continue
             explanation, recommendation = TEXT[cls]
+            code = pick_code(cls, defect_types)
+            if code is None:
+                explanation = f"{NAME[cls]}. {explanation}"
             findings.append({
                 "componentId": comp,
-                "defectCode": pick_code(cls, defect_types),
+                "defectCode": code,
                 "category": "PossibleDefect" if score >= 0.6 else "CheckRecommended",
                 "confidence": round(score, 2),
                 "explanation": explanation,

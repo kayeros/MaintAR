@@ -35,6 +35,23 @@ const CATEGORY = {
   CheckRecommended: { key: 'check', word: 'Рекомендуется проверка' },
   NoVisibleProblems: { key: 'ok', word: 'Видимых проблем нет' },
 };
+// Название находки: из базы, а если у типа нет такого кода — по классу модели ИИ (узнаём по тексту пояснения).
+const CLASS_NAMES = [
+  ['крепеж', 'Проблема с крепежом'], ['крепёж', 'Проблема с крепежом'], ['изоляци', 'Повреждение изоляции кабеля'],
+  ['утечк', 'Утечка жидкости'], ['трещин', 'Трещина'], ['коррози', 'Коррозия поверхности'],
+];
+const defectTitle = (f) => {
+  if (f.defectName) return f.defectName;
+  const e = String(f.explanation || '').toLowerCase();
+  const hit = CLASS_NAMES.find(([k]) => e.includes(k));
+  return hit ? hit[1] : 'Признак дефекта';
+};
+// Пояснение без повтора названия в начале («Коррозия поверхности. Видны…» → «Видны…»).
+const defectText = (f) => {
+  const t = String(f.explanation || '');
+  const n = defectTitle(f);
+  return t.startsWith(n + '. ') ? t.slice(n.length + 2) : t;
+};
 const fmtDate = (s) => {
   if (!s) return '';
   const d = new Date(s);
@@ -293,13 +310,13 @@ function Findings({ components, onComponent }) {
       <Pressable key={i} disabled={!onComponent} onPress={() => onComponent(f.componentId)} className={`${CARD} active:opacity-70`}>
         <View className="flex-row items-start justify-between gap-2">
           <View className="flex-1 gap-0.5">
-            <Text className={T.bodyB}>{i + 1}. {f.defectName || 'Признак дефекта'}</Text>
+            <Text className={T.bodyB}>{i + 1}. {defectTitle(f)}</Text>
             <Text className={onComponent ? 'text-[15px] text-primary font-semibold' : T.cap}>Узел: {f.componentName}{onComponent ? ' ›' : ''}</Text>
           </View>
           {f.confidence != null && <Text className="text-[15px] font-semibold text-muted">{Math.round(f.confidence * 100)} %</Text>}
         </View>
         <Badge k={cat.key} text={cat.word} />
-        {!!f.explanation && <Text className={T.body}>{f.explanation}</Text>}
+        {!!f.explanation && <Text className={T.body}>{defectText(f)}</Text>}
         {!!f.recommendation && (
           <View className="bg-bg rounded-xl p-3 gap-1">
             <Text className="text-[14px] font-semibold text-primary">Что сделать</Text>
@@ -393,7 +410,7 @@ function suspects(d) {
     (byComp[c.id] || []).filter((f) => f.category !== 'NoVisibleProblems').forEach((f) => {
       const cat = CATEGORY[f.category] || CATEGORY.CheckRecommended;
       if (cat.key === 'defect') k = 'defect';
-      reasons.push(`На последнем осмотре: ${(f.defectName || 'признак дефекта').toLowerCase()} — ${cat.word.toLowerCase()}`);
+      reasons.push(`На последнем осмотре: ${defectTitle(f).toLowerCase()} — ${cat.word.toLowerCase()}`);
     });
     const life = lifeLeft(c, d.installedAt);
     if (!life || life.left == null) reasons.push('Нет данных о ресурсе узла');
@@ -458,7 +475,7 @@ function photoState(report, componentId) {
   const when = report.lastInspectionDate ? ` (осмотр ${fmtDate(report.lastInspectionDate)})` : '';
   if (!probs.length) return { k: 'ok', text: `видимых проблем не обнаружено${when}` };
   const hasDefect = probs.some((f) => f.category === 'PossibleDefect');
-  const names = probs.map((f) => `${(f.defectName || 'признак дефекта').toLowerCase()} — ${(CATEGORY[f.category] || CATEGORY.CheckRecommended).word.toLowerCase()}`);
+  const names = probs.map((f) => `${defectTitle(f).toLowerCase()} — ${(CATEGORY[f.category] || CATEGORY.CheckRecommended).word.toLowerCase()}`);
   return { k: hasDefect ? 'defect' : 'check', text: `${names.join('; ')}${when}` };
 }
 function ResourceLine({ label, value, k }) {
