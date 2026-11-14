@@ -259,8 +259,8 @@ function PhotoBoxes({ photo, findings }) {
             borderColor: c.color, left: `${f.boxX * 100}%`, top: `${f.boxY * 100}%`,
             width: `${Math.min(f.boxWidth, 1 - f.boxX) * 100}%`, height: `${Math.min(f.boxHeight, 1 - f.boxY) * 100}%`,
           }}>
-            <View className="absolute left-[-3px] h-6 px-2 justify-center rounded" style={{ backgroundColor: c.color, top: f.boxY > 0.08 ? -25 : 0 }}>
-              <Text numberOfLines={1} className="text-white text-[13px] font-semibold">{f.defectName || f.componentName}</Text>
+            <View className="absolute left-[-3px] h-6 min-w-[24px] px-1.5 items-center justify-center rounded" style={{ backgroundColor: c.color, top: f.boxY > 0.08 ? -25 : 0 }}>
+              <Text className="text-white text-[13px] font-bold">{i + 1}</Text>
             </View>
           </View>
         );
@@ -283,7 +283,7 @@ function Findings({ components }) {
       <View key={i} className={CARD}>
         <View className="flex-row items-start justify-between gap-2">
           <View className="flex-1 gap-0.5">
-            <Text className={T.bodyB}>{f.defectName || 'Признак дефекта'}</Text>
+            <Text className={T.bodyB}>{i + 1}. {f.defectName || 'Признак дефекта'}</Text>
             <Text className={T.cap}>Узел: {f.componentName}</Text>
           </View>
           {f.confidence != null && <Text className="text-[15px] font-semibold text-muted">{Math.round(f.confidence * 100)} %</Text>}
@@ -302,62 +302,53 @@ function Findings({ components }) {
 }
 
 // ----- оборудование: список -----
-function EquipmentList({ onOpen, onScan }) {
-  const [items, setItems] = useState(null);
-  const [search, setSearch] = useState('');
+// Поиск оборудования только по QR-коду или номеру; ниже то, что пользователь уже находил.
+function FindEquipment({ user, onFound, onScan, version }) {
   const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const [refreshing, setRefreshing] = useState(false);
-  const load = useCallback(async (q) => {
-    setErr('');
-    try { setItems(await api.listEquipment(q)); } catch (e) { setErr(e.message); if (!items) setItems([]); }
-  }, []);
-  useEffect(() => { const t = setTimeout(() => load(search.trim()), 300); return () => clearTimeout(t); }, [search, load]);
-  const byCode = async () => {
-    const v = code.trim();
-    if (!v) return;
-    try { const r = await api.identify(v); onOpen(r.equipment.id, { value: v, method: 'SerialNumber' }); }
+  const [recent, setRecent] = useState([]);
+  useEffect(() => { api.getRecent(user.email).then(setRecent); }, [user.email, version]);
+  const find = async (value, method) => {
+    const v = (value || '').trim();
+    if (!v) return setErr('Введите код с QR или серийный номер с шильдика');
+    setBusy(true); setErr('');
+    try { const r = await api.identify(v); await onFound(r, v, method); }
     catch (e) { setErr(e.message); }
+    setBusy(false);
   };
+  const remove = async (code) => setRecent(await api.removeRecent(user.email, code));
   return (
-    <FlatList
-      data={items || []}
-      keyExtractor={(e) => String(e.id)}
-      contentContainerClassName="p-4 gap-3 pb-8"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(search.trim()); setRefreshing(false); }} />}
-      ListHeaderComponent={(
-        <View className="gap-3 mb-1">
-          <Primary title="Сканировать QR-код" icon="qr-code-outline" onPress={onScan} />
-          <View className="flex-row gap-2">
-            <View className="flex-1"><Field icon="barcode-outline" value={code} onChangeText={setCode} placeholder="Код или серийный номер" onSubmitEditing={byCode} autoCapitalize="characters" /></View>
-            <Secondary title="Найти" onPress={byCode} />
-          </View>
-          <Field icon="search-outline" value={search} onChangeText={setSearch} placeholder="Поиск по названию или модели" />
-          <ErrorBox text={err} />
-          {items === null && <ActivityIndicator color={C.primary} />}
-        </View>
-      )}
-      ListEmptyComponent={items && !err ? <Text className={`${T.body} text-center text-muted py-8`}>Оборудование не найдено</Text> : null}
-      renderItem={({ item: e }) => {
-        const k = reportStatus(e.status);
-        return (
-          <Pressable onPress={() => onOpen(e.id, { value: e.code, method: 'Manual' })} className={`${CARD} active:opacity-70`}>
-            <View className="flex-row items-start gap-3">
-              <View className={`w-11 h-11 rounded-full items-center justify-center ${ST[k].soft}`}>
-                <Ionicons name={ST[k].icon} size={24} color={ST[k].color} />
-              </View>
+    <ScrollView contentContainerClassName="p-4 gap-4 pb-8" keyboardShouldPersistTaps="handled">
+      <View className={CARD}>
+        <Text className={T.title}>Найдите оборудование</Text>
+        <Text className={T.body}>Отсканируйте QR-код на агрегате или введите номер с шильдика.</Text>
+        <Primary title="Сканировать QR-код" icon="qr-code-outline" onPress={onScan} />
+        <Field icon="barcode-outline" value={code} onChangeText={(v) => { setCode(v); setErr(''); }}
+          placeholder="Код или серийный номер" onSubmitEditing={() => find(code, 'SerialNumber')} autoCapitalize="characters" />
+        <Secondary title="Найти по номеру" icon="search-outline" onPress={() => find(code, 'SerialNumber')} />
+        <ErrorBox text={err} />
+        {busy && <ActivityIndicator color={C.primary} />}
+      </View>
+      <View className={CARD}>
+        <Text className={T.bodyB}>Недавно найденные</Text>
+        {!recent.length && <Text className={T.cap}>Здесь появится оборудование, которое вы нашли по QR-коду или номеру.</Text>}
+        {recent.map((e, i) => (
+          <View key={e.code} className={`flex-row items-center gap-3 py-2 ${i === recent.length - 1 ? '' : 'border-b border-divider'}`}>
+            <Pressable onPress={() => find(e.code, e.method)} className="flex-1 flex-row items-center gap-3 min-h-[48px] active:opacity-60">
+              <View className="w-10 h-10 rounded-full bg-primary-soft items-center justify-center"><Ionicons name="construct-outline" size={22} color={C.primary} /></View>
               <View className="flex-1 gap-0.5">
                 <Text className={T.bodyB}>{e.name}</Text>
                 <Text className={T.cap}>{e.model} · {e.code}</Text>
-                {!!e.location && <Text className={T.cap}>{e.location}</Text>}
               </View>
-              <Ionicons name="chevron-forward" size={22} color={C.muted} />
-            </View>
-            <Badge k={k} text={k === 'defect' ? `Есть дефекты: ${e.defectsCount}` : undefined} />
-          </Pressable>
-        );
-      }}
-    />
+            </Pressable>
+            <Pressable onPress={() => remove(e.code)} hitSlop={8} accessibilityLabel="Убрать из списка" className="w-11 h-11 items-center justify-center">
+              <Ionicons name="close" size={22} color={C.muted} />
+            </Pressable>
+          </View>
+        ))}
+      </View>
+    </ScrollView>
   );
 }
 
@@ -790,13 +781,21 @@ export default function App() {
     setStack((st) => [...st.filter((s) => s.kind !== 'choose'), { kind: 'analyze', photo: { uri: a.uri, width: a.width, height: a.height }, target }]);
   };
 
+  // Найдено по QR или номеру: запоминаем у пользователя и открываем карточку.
+  async function onFound(report, value, method) {
+    const e = report.equipment;
+    await api.addRecent(user.email, { id: e.id, code: e.code, name: e.name, model: e.model, method });
+    setVersion((x) => x + 1);
+    push({ kind: 'card', id: e.id, target: { value, method } });
+  }
+
   if (camera) {
     return (
       <CameraScreen mode={camera.mode} hint={camera.target?.name}
         onClose={() => setCamera(null)}
         onQr={async (v) => {
           setCamera(null);
-          try { const r = await api.identify(v.trim()); push({ kind: 'card', id: r.equipment.id, target: { value: v.trim(), method: 'QrCode' } }); }
+          try { await onFound(await api.identify(v.trim()), v.trim(), 'QrCode'); }
           catch (e) { push({ kind: 'error', text: e.message }); }
         }}
         onPhoto={(p) => {
@@ -868,7 +867,7 @@ export default function App() {
       <StatusBar barStyle="light-content" backgroundColor={C.primary} />
       <Header title={TABS.find((t) => t[0] === tab)[1]} />
       <View className="flex-1">
-        {tab === 'equipment' && <EquipmentList onOpen={(id, target) => push({ kind: 'card', id, target })} onScan={() => setCamera({ mode: 'qr' })} />}
+        {tab === 'equipment' && <FindEquipment user={user} version={version} onFound={onFound} onScan={() => setCamera({ mode: 'qr' })} />}
         {tab === 'history' && <History onOpen={(id) => push({ kind: 'inspection', id })} />}
         {tab === 'profile' && <Profile user={user} onLogout={logout} />}
       </View>

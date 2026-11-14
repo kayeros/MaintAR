@@ -101,6 +101,7 @@ export async function request(path, { method = 'GET', json, form, auth = true, t
   try { body = text ? JSON.parse(text) : null; } catch (e) { /* текст */ }
   if (res.status === 401 && auth) { onUnauthorized(); throw new Error('Сессия истекла, войдите снова'); }
   if (res.status === 403) throw new Error('Подтвердите почту, чтобы продолжить');
+  if (res.status === 404 || res.status === 400 || res.status === 409) throw new Error(messageFrom(res.status, body));
   if (!res.ok) throw new Error(`${messageFrom(res.status, body)} (HTTP ${res.status} ${method} ${path}: ${String(text).slice(0, 200)})`);
   return body;
 }
@@ -135,6 +136,22 @@ export const getEquipment = (id) => request(`/api/Equipment/${id}`);
 export const identify = (value) => request(`/api/Equipment/identify?value=${encodeURIComponent(value)}`);
 export const myInspections = () => request('/api/Inspections/my?pageSize=50');
 export const getInspection = (id) => request(`/api/Inspections/${id}`);
+
+// ----- недавно найденное оборудование (на телефоне, у каждого пользователя своё) -----
+const recentKey = (email) => `maintar.recent.${(email || '').toLowerCase()}`;
+export async function getRecent(email) {
+  try { return JSON.parse((await AsyncStorage.getItem(recentKey(email))) || '[]'); } catch (e) { return []; }
+}
+export async function addRecent(email, item) {
+  const list = [item, ...(await getRecent(email)).filter((x) => x.code !== item.code)].slice(0, 10);
+  try { await AsyncStorage.setItem(recentKey(email), JSON.stringify(list)); } catch (e) { /* не критично */ }
+  return list;
+}
+export async function removeRecent(email, code) {
+  const list = (await getRecent(email)).filter((x) => x.code !== code);
+  try { await AsyncStorage.setItem(recentKey(email), JSON.stringify(list)); } catch (e) { /* не критично */ }
+  return list;
+}
 
 // ----- журнал работ по узлам -----
 export const MAINT_TYPES = [
