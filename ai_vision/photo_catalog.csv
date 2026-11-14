@@ -1,0 +1,53 @@
+id,folder,file,expected,comp,flags,note
+0,Запорная арматура,0831c2a9-3a2b-5bf7-b70f-05f1d51f5cdb (1).jpg,surface_corrosion;flange_corrosion,piping,watermark,"Ржавая задвижка у воды, сток alamy"
+1,Запорная арматура,0831c2a9-3a2b-5bf7-b70f-05f1d51f5cdb.jpg,surface_corrosion;flange_corrosion,piping,watermark,"Ржавая задвижка на трубе, сток alamy"
+2,Запорная арматура,1396430378_7447321.jpg,casing_crack,casing,,"Трещина корпуса, заделана герметиком"
+3,Запорная арматура,86.PNG,surface_corrosion,piping,,"Поворотный затвор, коррозия внутри проходного сечения"
+4,Запорная арматура,IMG_20261113_142550.jpg,flange_corrosion;salt_deposits,piping,,Фланец в толстом слое продуктов коррозии
+5,Запорная арматура,IMG_20261113_142555.jpg,flange_corrosion;pipe_leak_pitting,piping,,Ржавые потёки и капля жидкости у фланца
+6,Запорная арматура,cca9d029-459e-5007-8f88-181843ed8665.jpg,stem_packing_leak;pipe_leak_pitting,piping,,"Шаровой кран, струи воды из-под штока и корпуса"
+7,Запорная арматура,i.jpg,salt_deposits;flange_corrosion;stem_packing_leak,piping,,Крышка задвижки в белом налёте и ржавчине у штока
+8,Запорная арматура,Безымянный.png,handwheel_damage,piping,ai_generated,"Разводной ключ на гайке штока, маховик на месте: спорная разметка"
+9,Насосные агрегаты,16c811b0db124c77b276a1a06bc1d3fb.png,terminal_overheat;cable_insulation_damage,terminal,ai_generated,Обугленные кабели и нагар на клеммнике
+10,Насосные агрегаты,2c510abd88b648efb8841d297d432aee.png,frame_corrosion_loose_bolts;surface_corrosion,frame,ai_generated,"Общий вид агрегата, ржавая рама и корпус"
+11,Насосные агрегаты,4.jpg,none,bearing,,"Разрушенный подшипник, внутренний дефект: камера снаружи не видит"
+12,Насосные агрегаты,60cb39e72d7e4bc38d47e945b66900f8.png,shaft_seal_leak,seal,ai_generated,Капли масла из-под уплотнения вала
+13,Насосные агрегаты,6bd1015378aa4382aedc45fe4b7adda4.png,frame_corrosion_loose_bolts,frame,ai_generated,"Ржавая опорная рама, болты, пятна на фундаменте"
+14,Насосные агрегаты,kavitacija2.jpg,none,impeller,,"Кавитационный износ рабочего колеса, внутренний дефект"
+15,Насосные агрегаты,obsledovanie-hvs-gvs-2.jpg,flange_corrosion;surface_corrosion,piping,,Сильно ржавая задвижка
+16,Насосные агрегаты,photo_2026-11-13_12-46-46.jpg,surface_corrosion,casing,,"Два насоса, местами ржавчина и грязь"
+17,Насосные агрегаты,photo_2026-11-13_12-48-02.jpg,surface_corrosion,terminal,,Клеммная коробка в пыли и ржавчине: спорная разметка
+18,Насосные агрегаты,photo_2026-11-13_12-48-03.jpg,surface_corrosion,terminal,,Клеммная коробка с ржавчиной: спорная разметка
+19,Насосные агрегаты,photo_2026-11-13_12-48-48.jpg,none,terminal,,"Клеммник с проводами, видимых дефектов нет (отрицательный пример)"
+20,Насосные агрегаты,photo_2026-11-13_12-51-10 (2).jpg,shaft_seal_leak;surface_corrosion,seal,duplicate_of:28,"Ржавый вал у основания, лужа"
+21,Насосные агрегаты,photo_2026-11-13_12-51-10.jpg,salt_deposits;pipe_leak_pitting,piping,duplicate_of:27,Подтёк с отложениями от резьбового соединения
+22,Насосные агрегаты,photo_2026-11-13_12-53-12.jpg,surface_corrosion;salt_deposits,piping,,"Ч/б фото, фланец в отложениях: спорная разметка"
+23,Насосные агрегаты,silnaja-korrozija-1-450x338.jpg,surface_corrosion,piping,,Трубы с коррозией у основания
+24,Насосные агрегаты,td_010_02.png,casing_crack,casing,,Трещина корпуса по рёбрам
+25,Насосные агрегаты,Безымянный.png,none,terminal,,"Клеммная коробка, заземление на месте (отрицательный пример)"
+26,Насосные агрегаты,Сниимок.PNG,seal_overheat,seal,,Дым у сальниковой камеры
+27,Насосные агрегаты,Снимок.PNG,salt_deposits;pipe_leak_pitting,piping,duplicate_of:21,Дубликат 21
+28,Насосные агрегаты,Снимок1.PNG,shaft_seal_leak;surface_corrosion,seal,duplicate_of:20,Дубликат 20
+29,Насосные агрегаты,насос.jpg,frame_corrosion_loose_bolts;surface_corrosion,frame,ai_generated;near_duplicate_of:10,Почти дубликат 10
+30,Трубопровод,1corrsia.jpg,pipe_leak_pitting;flange_corrosion,piping,,"Капли из стыка, ржавые болты"
+31,Трубопровод,354c86b2f75e35fdf90ce044cf02d997-big.jpg,pipe_crack,piping,,Трещина сварного шва
+32,Трубопровод,IMG_20261113_143107.jpg,surface_corrosion,piping,,"Труба большого диаметра, локальная коррозия"
+33,Трубопровод,IMG_20261113_143112.jpg,pipe_crack,piping,,Продольная трещина трубы
+34,Трубопровод,IMG_20261113_143116.jpg,pipe_crack,piping,,Разрыв медной трубы
+35,Трубопровод,IMG_20261113_143119.jpg,pipe_crack,piping,,Трещина по кромке трубы
+36,Трубопровод,Photo-9-Mechanically-Damaged-Insulation-on-Chilled-Water-Pipe.jpg,insulation_damage,piping,,Разорванная теплоизоляция
+37,Трубопровод,korroziya.png,pipe_leak_pitting;surface_corrosion,piping,,Сквозные коррозионные отверстия
+38,Трубопровод,stock-photo-corroded-flanged-joint-with-peeling-paint-and-oxidation-2738414417.jpg,flange_corrosion,piping,watermark,"Сильно ржавый фланец, сток shutterstock"
+39,Трубопровод,stock-photo-corroded-industrial-water-pump-flange-joint-covered-in-heavy-mineral-salt-2840981719.jpg,salt_deposits,piping,watermark,"Солевые наросты, сток shutterstock"
+40,Трубопровод,unnamed.jpg,surface_corrosion;flange_corrosion,piping,,Ржавый стык трубы
+41,ЭД,1.PNG,none,bearing,,"Разрушенный сепаратор подшипника, внутренний дефект"
+42,ЭД,3.PNG,none,motor,,"Ротор, внутренний узел"
+43,ЭД,55.PNG,none,bearing,,"Выкрашивание дорожки подшипника, внутренний дефект"
+44,ЭД,65d7bec338d641b8ab2a8718af266a74.png,cooling_fins_damage,motor,ai_generated,Сломанные рёбра охлаждения ЭД
+45,ЭД,66.PNG,none,motor,,"Обмотка статора, внутренний узел"
+46,ЭД,8.PNG,none,motor,,Сломанная крыльчатка вентилятора ЭД: отдельного класса нет
+47,ЭД,81316b33970247cdbc980ceccd88cb9a.png,overheat_discoloration;surface_corrosion,motor,ai_generated,Побежалость и шелушение краски на подшипниковом щите
+48,ЭД,IMG_20261113_142620.jpg,none,motor,,"Ротор и вентилятор в разборе, внутренний узел"
+49,ЭД,Снимок.PNG,none,motor,,"Задиры на поверхности вала/ротора, внутренний дефект"
+50,ЭД,эд.PNG,none,motor,,"Обмотка статора, повреждение изоляции витков, внутренний дефект"
+51,ЭД,эдд.PNG,none,motor,,"Выгоревшая обмотка, внутренний дефект"
