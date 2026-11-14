@@ -30,9 +30,9 @@
 
 | Часть | Где | Порт | Запуск |
 |---|---|---|---|
-| Сервис ИИ (YOLOv8) | `ai_service/` | 8000 | `ai_service\run.bat` |
+| Сервис ИИ (YOLOv8) | `ai/service/` | 8000 | `ai\service\run.bat` |
 | Бэкенд MaintARBackend (.NET 11) | `backend\MaintARBackend` | 5176 | `dotnet run --launch-profile http --urls http://0.0.0.0:5176` (Development) |
-| Приложение (Expo) | этот репозиторий | 8081 | `npm install`, затем `npx expo start --lan --clear` |
+| Приложение (Expo) | `frontend/` | 8081 | `npm install`, затем `npx expo start --lan --clear` |
 
 1. Бэкенд лежит в этом репозитории, в папке `backend` (перенесён из репозитория MaintARBackend). Локально работает на SQLite. Скопируйте `backend\MaintARBackend\appsettings.Local.example.json` в `appsettings.Local.json` (он не в git) и задайте `Database:Provider=Sqlite`, ключ JWT, токен Resend и адрес сервиса ИИ. База и демо-оборудование создаются при первом запуске. В режиме Development код подтверждения почты дублируется в консоль бэкенда.
 2. Адрес бэкенда для приложения задаётся в `.env`: `EXPO_PUBLIC_API_URL=http://<IP компьютера>:5176` (образец в `.env.example`). Его можно поменять в «Профиле».
@@ -68,13 +68,13 @@
 
 | Файл | Содержимое |
 |---|---|
-| `App.js` | экраны и навигация |
-| `src/api.js` | клиент бэкенда: токен, ошибки на русском, загрузка фото, нормализация QR |
-| `src/theme.js` | цвета |
-| `ai_service/app.py` | сервис ИИ: `POST /analyze` → находки с рамками в формате бэкенда |
+| `frontend/App.js` | экраны и навигация |
+| `frontend/src/api.js` | клиент бэкенда: токен, ошибки на русском, загрузка фото, нормализация QR |
+| `frontend/src/theme.js` | цвета |
+| `ai/service/app.py` | сервис ИИ: `POST /analyze` → находки с рамками в формате бэкенда |
 | `start-all.bat` | запуск всех трёх частей |
 | `backend/` | бэкенд MaintARBackend (ASP.NET Core): учётные записи, оборудование, осмотры, журнал работ |
-| `server/`, `src/engine.js`, `src/data/`, `src/AuthScreen.js`, `src/auth.js` | ранний прототип (офлайн-правила и датчики кейса), приложение их больше не использует |
+| `ai/server/`, `frontend/src/engine.js`, `frontend/src/data/`, `frontend/src/AuthScreen.js`, `frontend/src/auth.js` | ранний прототип (офлайн-правила и датчики кейса), приложение их больше не использует |
 
 ## Ограничения
 

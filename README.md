@@ -18,7 +18,7 @@
 Нужны .NET 11 SDK, Python 3.12+, Node.js 20+ и телефон с Expo Go, подключённый к той же сети Wi-Fi, что и компьютер.
 
 1. Скопируйте `backend\MaintARBackend\appsettings.Local.example.json` в `appsettings.Local.json` и впишите ключи. `Jwt:Key` — любая строка от 32 символов.
-2. В `.env` укажите IP компьютера: `EXPO_PUBLIC_API_URL=http://<IP ПК>:5176` (образец в `.env.example`). Выполните `npm install` и запустите `start-all.bat`: откроются окна ИИ (8000), сервера (5176) и Expo (8081).
+2. В `frontend\.env` укажите IP компьютера: `EXPO_PUBLIC_API_URL=http://<IP ПК>:5176` (образец в `frontend\.env.example`). В папке `frontend` выполните `npm install`, затем запустите `start-all.bat`: откроются окна ИИ (8000), сервера (5176) и Expo (8081).
 3. В Expo Go откройте `exp://<IP ПК>:8081`.
 
 Если телефон не видит сервер, откройте порты в брандмауэре Windows:
@@ -35,9 +35,9 @@
 
 ## Структура
 
-- корень (`App.js`, `src/`) — мобильное приложение (React Native, Expo);
+- `frontend/` — мобильное приложение (React Native, Expo);
 - `backend/` — сервер (ASP.NET Core, SQLite);
-- `ai_service/` — сервис ИИ (YOLOv8).
+- `ai/` — ИИ: `service` — сервис анализа фото (YOLOv8), его вызывает бэкенд; `vision` — обучение и оценка модели; `server` — ранний прототип.
 
 ## Ограничения
 
