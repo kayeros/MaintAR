@@ -144,7 +144,8 @@ function AuthScreen({ onDone }) {
   const [mode, setMode] = useState('login');
   const [f, setF] = useState({ name: '', email: '', password: '', password2: '' });
   const [note, setNote] = useState('');
-  const [showPw, setShowPw] = useState(false);
+  // Пароль виден по умолчанию: со скрытым полем Android 15 затемняет экран при трансляции. Глаз скрывает.
+  const [showPw, setShowPw] = useState(true);
   const pw = { show: showPw, onToggleShow: () => setShowPw(!showPw) };
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -214,7 +215,8 @@ function ForgotScreen({ login, onBack }) {
   const [p2, setP2] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const [showPw, setShowPw] = useState(false);
+  // Пароль виден по умолчанию: со скрытым полем Android 15 затемняет экран при трансляции. Глаз скрывает.
+  const [showPw, setShowPw] = useState(true);
   const pw = { show: showPw, onToggleShow: () => setShowPw(!showPw) };
   const { top } = useSafeAreaInsets();
   const getCode = async () => {
