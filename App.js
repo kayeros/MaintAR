@@ -450,17 +450,49 @@ function WorkList({ items, showComponent, onDelete, empty }) {
 }
 
 // Экран узла: ресурс, журнал работ, кнопка записи.
-function ComponentScreen({ component, eqInstalled, onRecord, version }) {
+// Фактическое состояние узла по последнему осмотру оборудования.
+function photoState(report, componentId) {
+  if (!report || report.status === 'NotInspected') return { k: 'none', text: 'осмотров не было' };
+  const g = (report.defects || []).find((x) => x.componentId === componentId);
+  const probs = g ? (g.findings || []).filter((f) => f.category !== 'NoVisibleProblems') : [];
+  const when = report.lastInspectionDate ? ` (осмотр ${fmtDate(report.lastInspectionDate)})` : '';
+  if (!probs.length) return { k: 'ok', text: `видимых проблем не обнаружено${when}` };
+  const hasDefect = probs.some((f) => f.category === 'PossibleDefect');
+  const names = probs.map((f) => `${(f.defectName || 'признак дефекта').toLowerCase()} — ${(CATEGORY[f.category] || CATEGORY.CheckRecommended).word.toLowerCase()}`);
+  return { k: hasDefect ? 'defect' : 'check', text: `${names.join('; ')}${when}` };
+}
+function ResourceLine({ label, value, k }) {
+  return (
+    <View className="flex-row items-start gap-2.5 py-2">
+      <View className="w-3 h-3 rounded-full mt-1.5" style={{ backgroundColor: ST[k || 'none'].color }} />
+      <Text className={`${T.body} flex-1`}><Text className="font-semibold">{label}: </Text>{value}</Text>
+    </View>
+  );
+}
+
+function ComponentScreen({ component, eqInstalled, report, onRecord, version }) {
   const [items, setItems] = useState(null);
   const [err, setErr] = useState('');
   useEffect(() => { api.maintenanceByComponent(component.id).then(setItems).catch((e) => { setErr(e.message); setItems([]); }); }, [component.id, version]);
   const life = lifeLeft(component, eqInstalled);
+  const fact = photoState(report, component.id);
+  const enough = life && life.left != null;
   return (
     <ScrollView contentContainerClassName="p-4 gap-4 pb-8">
       <View className={CARD}>
         <Text className={T.title}>{component.name}</Text>
-        {life && <Badge k={life.k} text={life.text} />}
-        <Text className={T.cap}>{component.lastReplacedAt ? `Последняя замена: ${component.lastReplacedAt}` : component.installedAt ? `Установлен: ${component.installedAt}` : 'Замен не было'}</Text>
+        <Text className={T.cap}>{component.lastReplacedAt ? `Последняя замена: ${component.lastReplacedAt}` : component.installedAt ? `Установлен: ${component.installedAt}` : eqInstalled ? `Замен не было, оборудование установлено ${eqInstalled}` : 'Замен не было'}</Text>
+      </View>
+      <View className={CARD}>
+        <Text className={T.bodyB}>Ресурс узла</Text>
+        <View>
+          <ResourceLine label="Нормативный срок" value={component.serviceLifeMonths ? `${component.serviceLifeMonths} мес.` : 'не задан'} k={component.serviceLifeMonths ? 'ok' : 'none'} />
+          <ResourceLine label="Расчётный остаток" k={enough ? (life.left <= 0 ? 'defect' : life.pct < 0.15 ? 'check' : 'ok') : 'none'}
+            value={!enough ? 'нет данных' : life.left <= 0 ? `ресурс выработан ${-life.left} мес. назад (${life.fromWhat} ${life.from})` : `~${life.left} мес. (${life.fromWhat} ${life.from})`} />
+          <ResourceLine label="Фактическое состояние по фото" value={fact.text} k={fact.k} />
+        </View>
+        {!enough && <Text className={`${T.cap} text-check`}>Недостаточно данных для оценки ресурса</Text>}
+        <Text className={T.cap}>Расчётный остаток — по календарю; фактическое состояние — по последнему осмотру ИИ. Решение принимает инженер.</Text>
       </View>
       <Primary title="Записать работу" icon="create" onPress={() => onRecord(component)} />
       <View className={CARD}>
@@ -1007,7 +1039,7 @@ export default function App() {
         onPhotoChanged={(d, url) => api.addRecent(user.email, { id: d.id, code: d.code, name: d.name, model: d.model, method: top.target?.method || 'Manual', photoUrl: url })} />;
     } else if (top.kind === 'component') {
       title = 'Узел';
-      body = <ComponentScreen component={top.component} eqInstalled={top.eqInstalled} version={version}
+      body = <ComponentScreen component={top.component} eqInstalled={top.eqInstalled} report={top.report} version={version}
         onRecord={(c) => push({ kind: 'record', components: top.components, preset: c.id })} />;
     } else if (top.kind === 'record') {
       title = 'Записать работу';
