@@ -153,6 +153,9 @@ export async function identify(value) {
 }
 export const myInspections = () => request('/api/Inspections/my?pageSize=50');
 export const getInspection = (id) => request(`/api/Inspections/${id}`);
+// Все осмотры оборудования (все инженеры) и просмотр любого из них.
+export const equipmentInspections = (equipmentId) => request(`/api/Inspections/equipment/${equipmentId}?pageSize=50`);
+export const getEquipmentInspection = (equipmentId, id) => request(`/api/Inspections/equipment/${equipmentId}/${id}`);
 
 // ----- недавно найденное оборудование (на телефоне, у каждого пользователя своё) -----
 const recentKey = (email) => `maintar.recent.${(email || '').toLowerCase()}`;

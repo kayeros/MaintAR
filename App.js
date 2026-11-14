@@ -535,8 +535,40 @@ function RecordWork({ components, preset, onSaved }) {
   );
 }
 
+// Строка осмотра в истории оборудования: фото, статус, дата, инженер.
+function InspectionRow({ i, onOpen, last }) {
+  const k = i.status === 'Failed' ? 'check' : reportStatus(i.result);
+  return (
+    <Pressable onPress={() => onOpen(i)} className={`flex-row items-center gap-3 py-3 active:opacity-60 ${last ? '' : 'border-b border-divider'}`}>
+      {i.photoPath
+        ? <Image source={{ uri: api.photoUrl(i.photoPath) }} style={{ width: 52, height: 52, borderRadius: 10, backgroundColor: C.sunken }} />
+        : <View className="w-[52px] h-[52px] rounded-[10px] bg-sunken items-center justify-center"><Ionicons name="image-outline" size={22} color={C.muted} /></View>}
+      <View className="flex-1 gap-1">
+        <Badge k={k} text={i.status === 'Failed' ? 'Анализ не выполнен' : k === 'defect' ? `Дефектов: ${i.defectsCount}` : undefined} />
+        <Text className={T.cap}>{fmtDate(i.createdAt)}{i.userName ? ` · ${i.userName}` : ''}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={22} color={C.muted} />
+    </Pressable>
+  );
+}
+function EqInspectionsScreen({ equipmentId, onOpen }) {
+  const [items, setItems] = useState(null);
+  const [err, setErr] = useState('');
+  useEffect(() => { api.equipmentInspections(equipmentId).then(setItems).catch((e) => { setErr(e.message); setItems([]); }); }, [equipmentId]);
+  return (
+    <ScrollView contentContainerClassName="p-4 gap-3 pb-8">
+      <ErrorBox text={err} />
+      <View className={CARD}>
+        {items === null && <ActivityIndicator color={C.primary} />}
+        {items && !items.length && <Text className={T.cap}>Осмотров пока не было</Text>}
+        {(items || []).map((i, n) => <InspectionRow key={i.id} i={i} onOpen={onOpen} last={n === items.length - 1} />)}
+      </View>
+    </ScrollView>
+  );
+}
+
 // ----- оборудование: карточка -----
-function EquipmentCard({ id, onInspect, onShoot, onComponent, onRecord, onJournal, onPhotoChanged, version }) {
+function EquipmentCard({ id, onInspect, onShoot, onComponent, onRecord, onJournal, onInspection, onAllInspections, onPhotoChanged, version }) {
   const [uploading, setUploading] = useState(false);
   const [photoErr, setPhotoErr] = useState('');
   const [d, setD] = useState(null);
@@ -544,6 +576,8 @@ function EquipmentCard({ id, onInspect, onShoot, onComponent, onRecord, onJourna
   const [works, setWorks] = useState(null);
   useEffect(() => { api.getEquipment(id).then(setD).catch((e) => setErr(e.message)); }, [id, version]);
   useEffect(() => { api.maintenanceByEquipment(id).then(setWorks).catch(() => setWorks([])); }, [id, version]);
+  const [insps, setInsps] = useState(null);
+  useEffect(() => { api.equipmentInspections(id).then(setInsps).catch(() => setInsps([])); }, [id, version]);
   if (err) return <View className="p-4"><ErrorBox text={err} /></View>;
   if (!d) return <View className="p-8"><ActivityIndicator color={C.primary} /></View>;
   const rep = d.report;
@@ -619,6 +653,17 @@ function EquipmentCard({ id, onInspect, onShoot, onComponent, onRecord, onJourna
           );
         })}
         <Secondary title="Записать работу" icon="create-outline" onPress={() => onRecord(d, null)} />
+      </View>
+      <View className={CARD}>
+        <View className="flex-row items-center justify-between">
+          <Text className={T.bodyB}>Осмотры</Text>
+          {insps && insps.length > 5 && (
+            <Pressable onPress={() => onAllInspections(d)} hitSlop={8} className="min-h-[44px] justify-center"><Text className="text-[16px] text-primary font-semibold">Все осмотры ({insps.length})</Text></Pressable>
+          )}
+        </View>
+        {insps === null && <ActivityIndicator color={C.primary} />}
+        {insps && !insps.length && <Text className={T.cap}>Осмотров пока не было</Text>}
+        {(insps || []).slice(0, 5).map((i, n, arr) => <InspectionRow key={i.id} i={i} onOpen={(x) => onInspection(d, x)} last={n === arr.length - 1} />)}
       </View>
       <View className={CARD}>
         <View className="flex-row items-center justify-between">
@@ -792,11 +837,13 @@ function Inspections({ onOpen }) {
     />
   );
 }
-function InspectionView({ id, onBack, onComponent }) {
+function InspectionView({ id, equipmentId, onBack, onComponent }) {
   const [r, setR] = useState(null);
   const [err, setErr] = useState('');
   const [size, setSize] = useState(null);
-  useEffect(() => { api.getInspection(id).then(setR).catch((e) => setErr(e.message)); }, [id]);
+  useEffect(() => {
+    (equipmentId ? api.getEquipmentInspection(equipmentId, id) : api.getInspection(id)).then(setR).catch((e) => setErr(e.message));
+  }, [id, equipmentId]);
   // Фото осмотра с сервера: узнаём размер, чтобы рамки легли точно.
   useEffect(() => {
     const uri = r && api.photoUrl(r.photoPath);
@@ -946,6 +993,8 @@ export default function App() {
         onComponent={(c, d) => push({ kind: 'component', component: c, eqInstalled: d.installedAt, equipmentId: d.id, components: d.components, report: d.report })}
         onRecord={(d, cid) => push({ kind: 'record', components: d.components, preset: cid })}
         onJournal={(d) => push({ kind: 'journal', equipmentId: d.id })}
+        onInspection={(d, i) => push({ kind: 'inspection', id: i.id, equipmentId: d.id })}
+        onAllInspections={(d) => push({ kind: 'eqInspections', equipmentId: d.id })}
         onPhotoChanged={(d, url) => api.addRecent(user.email, { id: d.id, code: d.code, name: d.name, model: d.model, method: top.target?.method || 'Manual', photoUrl: url })} />;
     } else if (top.kind === 'component') {
       title = 'Узел';
@@ -979,7 +1028,10 @@ export default function App() {
         onComponent={openComponent} />;
     } else if (top.kind === 'inspection') {
       title = 'Осмотр';
-      body = <InspectionView id={top.id} onBack={pop} onComponent={openComponent} />;
+      body = <InspectionView id={top.id} equipmentId={top.equipmentId} onBack={pop} onComponent={openComponent} />;
+    } else if (top.kind === 'eqInspections') {
+      title = 'Осмотры оборудования';
+      body = <EqInspectionsScreen equipmentId={top.equipmentId} onOpen={(i) => push({ kind: 'inspection', id: i.id, equipmentId: top.equipmentId })} />;
     } else if (top.kind === 'error') {
       title = 'Ошибка';
       body = (
