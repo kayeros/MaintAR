@@ -313,7 +313,7 @@ function FindEquipment({ user, onFound, onScan, version }) {
     const v = (value || '').trim();
     if (!v) return setErr('Введите код с QR или серийный номер с шильдика');
     setBusy(true); setErr('');
-    try { const r = await api.identify(v); await onFound(r, v, method); }
+    try { const c = api.cleanCode(v); const r = await api.identify(c); await onFound(r, c, method); }
     catch (e) { setErr(e.message); }
     setBusy(false);
   };
@@ -833,7 +833,8 @@ export default function App() {
         onClose={() => setCamera(null)}
         onQr={async (v) => {
           setCamera(null);
-          try { await onFound(await api.identify(v.trim()), v.trim(), 'QrCode'); }
+          const code = api.cleanCode(v);
+          try { await onFound(await api.identify(code), code, 'QrCode'); }
           catch (e) { push({ kind: 'error', text: e.message }); }
         }}
         onPhoto={(p) => {

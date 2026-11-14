@@ -133,7 +133,24 @@ export async function verifyEmail(code, user) {
 export const listEquipment = (search) =>
   request('/api/Equipment' + (search ? `?search=${encodeURIComponent(search)}` : ''));
 export const getEquipment = (id) => request(`/api/Equipment/${id}`);
-export const identify = (value) => request(`/api/Equipment/identify?value=${encodeURIComponent(value)}`);
+// Значение из QR может прийти ссылкой (генераторы QR дописывают http://): берём сам код.
+export function cleanCode(raw) {
+  let v = String(raw || '').trim();
+  const q = v.match(/[?&](?:value|code|sn)=([^&#]+)/i);
+  if (q) return decodeURIComponent(q[1]).trim().toUpperCase();
+  v = v.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/[/#?]+$/, '');
+  if (v.includes('/')) v = v.split('/').filter(Boolean).pop() || v;
+  try { v = decodeURIComponent(v); } catch (e) { /* как есть */ }
+  return v.trim().toUpperCase();
+}
+export async function identify(value) {
+  const code = cleanCode(value);
+  try {
+    return await request(`/api/Equipment/identify?value=${encodeURIComponent(code)}`);
+  } catch (e) {
+    throw new Error(`${e.message}. Прочитан код: ${code || '(пусто)'}`);
+  }
+}
 export const myInspections = () => request('/api/Inspections/my?pageSize=50');
 export const getInspection = (id) => request(`/api/Inspections/${id}`);
 
