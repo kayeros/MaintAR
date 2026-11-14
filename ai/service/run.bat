@@ -1,5 +1,5 @@
 @echo off
-rem Сервис ИИ MaintAR (YOLO) на порту 8000. Веса по умолчанию: клон maintar-model-training рядом с проектом,
+rem Сервис ИИ MaintAR (YOLO) на порту 8000. Веса лежат в папке weights,
 rem другой путь задаётся переменными BASIC_WEIGHTS и EXPANDED_WEIGHTS.
 cd /d "%~dp0"
 if not exist .venv\Scripts\python.exe (

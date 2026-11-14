@@ -27,12 +27,10 @@ from PIL import Image, ImageOps
 log = logging.getLogger("maintar.ai")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-HANDOFF = Path(os.getenv(
-    "HANDOFF_DIR",
-    r"C:\Users\aleks\Desktop\Проекты\MaintAR-model-src\maintar-model-training-main\model_training\handoff",
-))
-BASIC = Path(os.getenv("BASIC_WEIGHTS", HANDOFF / "basic" / "weights" / "best.pt"))
-EXPANDED = Path(os.getenv("EXPANDED_WEIGHTS", HANDOFF / "expanded" / "weights" / "best.pt"))
+# Веса лежат рядом с сервисом (weights/); другой путь задаётся BASIC_WEIGHTS и EXPANDED_WEIGHTS.
+WEIGHTS = Path(__file__).resolve().parent / "weights"
+BASIC = Path(os.getenv("BASIC_WEIGHTS", WEIGHTS / "basic.pt"))
+EXPANDED = Path(os.getenv("EXPANDED_WEIGHTS", WEIGHTS / "expanded.pt"))
 
 # (веса, классы, которые берём из этой модели, порог уверенности)
 PLAN = [
