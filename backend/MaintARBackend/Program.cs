@@ -41,9 +41,21 @@ builder.Services.AddHttpClient<MaintARBackend.Services.Ai.IAiAnalysisClient, Mai
     client.Timeout = TimeSpan.FromSeconds(60);
 });
 
+// Без ключей проект запускается в Development "из коробки":
+// JWT-ключ берётся тестовый, письма не уходят, а коды подтверждения пишутся в консоль.
+var isDev = builder.Environment.IsDevelopment();
+if (string.IsNullOrWhiteSpace(builder.Configuration["Jwt:Key"]))
+{
+    if (!isDev) throw new InvalidOperationException("Jwt:Key не задан (appsettings.Local.json)");
+    builder.Configuration["Jwt:Key"] = "maintar-dev-only-jwt-key-change-me-in-production-2026";
+}
+
 var resendToken = builder.Configuration["Resend:ApiToken"];
 if (string.IsNullOrWhiteSpace(resendToken))
-    throw new InvalidOperationException("Resend:ApiToken не задан (user-secrets)");
+{
+    if (!isDev) throw new InvalidOperationException("Resend:ApiToken не задан (appsettings.Local.json)");
+    resendToken = "re_dev_placeholder"; // отправка упадёт и будет перехвачена, код — в консоли
+}
 builder.Services.AddResend(resendToken);
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
