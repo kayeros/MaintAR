@@ -368,7 +368,52 @@ function lifeLeft(c, eqInstalled) {
   const end = new Date(start); end.setMonth(end.getMonth() + c.serviceLifeMonths);
   const left = Math.round((end - Date.now()) / (30.44 * 864e5));
   const k = left <= 0 ? 'defect' : left < c.serviceLifeMonths * 0.2 ? 'check' : 'ok';
-  return { text: left <= 0 ? `Срок службы истёк ${-left} мес. назад` : `Осталось ~${left} мес. из ${c.serviceLifeMonths}`, k };
+  const fromWhat = c.lastReplacedAt ? 'от даты замены' : c.installedAt ? 'от даты установки узла' : 'от даты установки оборудования';
+  return { text: left <= 0 ? `Срок службы истёк ${-left} мес. назад` : `Осталось ~${left} мес. из ${c.serviceLifeMonths}`, k, left, pct: left / c.serviceLifeMonths, from, fromWhat };
+}
+
+// Шаг 5 сценария: какие узлы проверить первыми и почему.
+function suspects(d) {
+  const out = [];
+  const byComp = {};
+  (d.report.defects || []).forEach((g) => { byComp[g.componentId] = g.findings || []; });
+  d.components.forEach((c) => {
+    const reasons = [];
+    let k = 'check';
+    (byComp[c.id] || []).filter((f) => f.category !== 'NoVisibleProblems').forEach((f) => {
+      const cat = CATEGORY[f.category] || CATEGORY.CheckRecommended;
+      if (cat.key === 'defect') k = 'defect';
+      reasons.push(`На последнем осмотре: ${(f.defectName || 'признак дефекта').toLowerCase()} — ${cat.word.toLowerCase()}`);
+    });
+    const life = lifeLeft(c, d.installedAt);
+    if (!life || life.left == null) reasons.push('Нет данных о ресурсе узла');
+    else if (life.left <= 0) { k = 'defect'; reasons.push(`Ресурс выработан: ${life.text.toLowerCase()}`); }
+    else if (life.pct < 0.15) reasons.push(`Ресурс почти выработан: осталось ~${life.left} мес. из ${c.serviceLifeMonths}`);
+    if (reasons.length) out.push({ c, k, reasons });
+  });
+  return out.sort((a, b) => (a.k === 'defect' ? 0 : 1) - (b.k === 'defect' ? 0 : 1));
+}
+function CheckFirst({ d, onShoot }) {
+  const list = suspects(d);
+  if (!list.length) return null;
+  return (
+    <View className={`${CARD} border-check`}>
+      <View className="flex-row items-center gap-2">
+        <Ionicons name="eye-outline" size={24} color={C.check} />
+        <Text className={T.bodyB}>Сначала проверьте</Text>
+      </View>
+      {list.map(({ c, k, reasons }, i) => (
+        <View key={c.id} className={`gap-2 py-2 ${i === list.length - 1 ? '' : 'border-b border-divider'}`}>
+          <View className="flex-row items-center gap-2">
+            <View className="w-3 h-3 rounded-full" style={{ backgroundColor: ST[k].color }} />
+            <Text className={`${T.bodyB} flex-1`}>{c.name}</Text>
+          </View>
+          {reasons.map((r, j) => <Text key={j} className={T.body}>• {r}</Text>)}
+          <Secondary title="Сфотографировать узел" icon="camera-outline" onPress={() => onShoot(c)} />
+        </View>
+      ))}
+    </View>
+  );
 }
 function WorkRow({ w, showComponent, onDelete, last }) {
   const m = MAINT[w.type] || { word: w.type, icon: 'document-text-outline' };
@@ -490,7 +535,7 @@ function RecordWork({ components, preset, onSaved }) {
 }
 
 // ----- оборудование: карточка -----
-function EquipmentCard({ id, onInspect, onComponent, onRecord, onJournal, onPhotoChanged, version }) {
+function EquipmentCard({ id, onInspect, onShoot, onComponent, onRecord, onJournal, onPhotoChanged, version }) {
   const [uploading, setUploading] = useState(false);
   const [photoErr, setPhotoErr] = useState('');
   const [d, setD] = useState(null);
@@ -522,6 +567,12 @@ function EquipmentCard({ id, onInspect, onComponent, onRecord, onJournal, onPhot
   return (
     <ScrollView contentContainerClassName="p-4 gap-4 pb-8">
       <View className={CARD}>
+        <Text className={T.title}>{d.name}</Text>
+        <Badge k={k} />
+        <Text className={T.body}>{rep.message}{rep.lastInspectionDate ? ` · ${fmtDate(rep.lastInspectionDate)}` : ''}</Text>
+      </View>
+      <CheckFirst d={d} onShoot={(c) => onShoot(d, c)} />
+      <View className={CARD}>
         {d.photoUrl
           ? <Image source={{ uri: api.photoUrl(d.photoUrl) }} style={{ width: '100%', aspectRatio: 4 / 3, borderRadius: 12, backgroundColor: C.sunken }} resizeMode="cover" />
           : (
@@ -537,11 +588,6 @@ function EquipmentCard({ id, onInspect, onComponent, onRecord, onJournal, onPhot
           </View>
         )}
         <ErrorBox text={photoErr} />
-      </View>
-      <View className={CARD}>
-        <Text className={T.title}>{d.name}</Text>
-        <Badge k={k} />
-        <Text className={T.body}>{rep.message}{rep.lastInspectionDate ? ` · ${fmtDate(rep.lastInspectionDate)}` : ''}</Text>
       </View>
       <Primary title="Сделать фото и проверить" icon="camera" onPress={() => onInspect(d)} />
       {k === 'defect' && <Findings components={rep.defects} />}
@@ -859,7 +905,7 @@ export default function App() {
 
   if (camera) {
     return (
-      <CameraScreen mode={camera.mode} hint={camera.target?.name}
+      <CameraScreen mode={camera.mode} hint={camera.target?.hint || camera.target?.name}
         onClose={() => setCamera(null)}
         onQr={async (v) => {
           setCamera(null);
@@ -883,6 +929,7 @@ export default function App() {
       title = 'Карточка оборудования';
       body = <EquipmentCard id={top.id} version={version}
         onInspect={(d) => startInspection({ ...top.target, value: top.target?.value || d.code, name: d.name })}
+        onShoot={(d, c) => setCamera({ mode: 'photo', target: { ...top.target, value: top.target?.value || d.code, name: d.name, hint: `Наведите камеру на: ${c.name}` } })}
         onComponent={(c, d) => push({ kind: 'component', component: c, eqInstalled: d.installedAt, equipmentId: d.id, components: d.components })}
         onRecord={(d, cid) => push({ kind: 'record', components: d.components, preset: cid })}
         onJournal={(d) => push({ kind: 'journal', equipmentId: d.id })}
