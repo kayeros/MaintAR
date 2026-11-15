@@ -242,6 +242,9 @@ export async function uploadEquipmentPhoto(id, photo) {
 export const photoUrl = (p) => (p ? (p.startsWith('http') ? p : baseUrl + p) : null);
 
 // Профиль: имя и аватарка.
+// Выгрузка в CSV для Excel: what = 'inspections' | 'maintenance', mine — только свои записи.
+export const exportCsv = (what, mine) => request(`/api/Export/${what}${mine ? '?mine=true' : ''}`, { timeout: 60000 });
+
 export const getProfile = () => request('/api/Profile');
 export async function updateName(name, user) {
   const r = await request('/api/Profile/name', { method: 'PUT', json: { userName: name.trim() } });

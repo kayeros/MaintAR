@@ -4,7 +4,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, BackHandler, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, RefreshControl,
-  ScrollView, StatusBar, Text, TextInput, View,
+  ScrollView, Share, StatusBar, Text, TextInput, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -921,8 +921,31 @@ function Analyze({ photo, target, onBack, onRecord, onComponent }) {
 }
 
 // ----- история -----
+// Выгрузка истории в CSV (Excel): в браузере — скачать файл, на телефоне — «Поделиться».
+async function exportHistory(seg) {
+  const what = seg === 'inspections' ? 'inspections' : 'maintenance';
+  const text = await api.exportCsv(what, true);
+  const csv = String(text || '').replace(/^﻿/, '');
+  const name = `maintar-${seg === 'inspections' ? 'osmotry' : 'raboty'}-${new Date().toISOString().slice(0, 10)}.csv`;
+  if (Platform.OS === 'web') {
+    const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } else {
+    await Share.share({ title: name, message: csv });
+  }
+}
+
 function History({ onOpen }) {
   const [seg, setSeg] = useState('inspections');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const doExport = async () => {
+    setBusy(true); setErr('');
+    try { await exportHistory(seg); } catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
   return (
     <View className="flex-1">
       <View className="flex-row mx-4 mt-4 p-1 bg-sunken rounded-xl">
@@ -931,6 +954,10 @@ function History({ onOpen }) {
             <Text className={`text-[16px] ${seg === k ? 'text-primary font-semibold' : 'text-muted'}`}>{w}</Text>
           </Pressable>
         ))}
+      </View>
+      <View className="mx-4 mt-3 gap-2">
+        <Secondary title={busy ? 'Готовлю файл…' : seg === 'inspections' ? 'Выгрузить осмотры (Excel)' : 'Выгрузить работы (Excel)'} icon="download-outline" onPress={busy ? undefined : doExport} />
+        <ErrorBox text={err} />
       </View>
       {seg === 'inspections' ? <Inspections onOpen={onOpen} /> : <MyWorks />}
     </View>
