@@ -40,7 +40,7 @@
 4. Если телефон не видит сервер, откройте порты в брандмауэре:
    `netsh advfirewall firewall add rule name="MaintAR" dir=in action=allow protocol=TCP localport=8081,5176,8000 profile=private,public`
 
-Демо-оборудование: `VALVE-001` (задвижка), `TRANS-001` (трансформатор), `MOTOR-001` (электродвигатель).
+Демо-оборудование: `VALVE-001` (задвижка), `PUMP-001` (насосный агрегат), `MOTOR-001` (электродвигатель).
 
 ## Сценарий показа
 
