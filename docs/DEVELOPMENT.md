@@ -155,13 +155,83 @@ Swagger сервера в Development: `http://localhost:5176/swagger`.
 
 ### Модель данных
 
+```mermaid
+erDiagram
+    EquipmentType ||--o{ Equipment : "тип"
+    EquipmentType ||--o{ DefectType : "возможные дефекты"
+    Equipment ||--o{ Component : "узлы"
+    Equipment ||--o{ Inspection : "осмотры"
+    Inspection ||--o{ InspectionFinding : "находки ИИ"
+    Component ||--o{ InspectionFinding : "где найдено"
+    DefectType |o--o{ InspectionFinding : "что найдено"
+    Component ||--o{ MaintenanceRecord : "журнал работ"
+    User ||--o{ Inspection : "провёл"
+    User ||--o{ MaintenanceRecord : "записал"
+
+    EquipmentType {
+        int Id PK
+        string Name
+    }
+    Equipment {
+        int Id PK
+        int EquipmentTypeId FK
+        string Code "код в QR"
+        string SerialNumber
+        string Model
+        string Name
+        string Location
+        string PhotoPath
+    }
+    Component {
+        int Id PK
+        int EquipmentId FK
+        string Name
+        int ServiceLifeMonths
+        datetime InstalledAt
+        datetime LastReplacedAt
+    }
+    DefectType {
+        int Id PK
+        int EquipmentTypeId FK
+        string Code
+        string Name
+    }
+    Inspection {
+        int Id PK
+        int EquipmentId FK
+        int UserId FK
+        string Status "Pending / Completed / Failed"
+        string IdentificationMethod
+        string PhotoPath
+        string RawAiResponse
+    }
+    InspectionFinding {
+        int Id PK
+        int InspectionId FK
+        int ComponentId FK
+        int DefectTypeId FK "необязательно"
+        string Category
+        float Confidence
+        float BoxX
+        float BoxY
+    }
+    MaintenanceRecord {
+        int Id PK
+        int ComponentId FK
+        int UserId FK
+        string Type "Checked / Serviced / Replaced / Note"
+        datetime Date
+        string Comment
+    }
+    User {
+        int Id PK
+        string Email
+        string UserName
+        bool IsEmailVerified
+    }
 ```
-EquipmentType ─┬─< Equipment ─┬─< Component ─┬─< MaintenanceRecord >── User
-               │              │              └─< InspectionFinding
-               │              └─< Inspection ───< InspectionFinding
-               │                     └── User
-               └─< DefectType ──────────────────< InspectionFinding (необязательно)
-```
+
+`||--o{` — «один ко многим», `|o--o{` — связь необязательна (находка может быть без типа дефекта).
 
 | Сущность | Ключевые поля |
 |---|---|
