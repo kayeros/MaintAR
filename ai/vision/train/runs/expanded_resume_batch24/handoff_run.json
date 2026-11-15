@@ -1,0 +1,13 @@
+{
+  "checkpoint": "C:\\Docs\\Projects\\Анализ промышленного оборудования\\maintar-model-training\\model_training\\handoff\\expanded\\weights\\last.pt",
+  "checkpoint_sha256": "db155bcbcc0070825aad674c710f230b1b9c0e376d1bd97aedf73238dc972cb9",
+  "mode": "resume",
+  "data": "C:\\Docs\\Projects\\Анализ промышленного оборудования\\maintar-model-training\\model_training\\data\\expanded_handoff\\data.yaml",
+  "classes": [
+    "surface_corrosion",
+    "pipe_crack",
+    "pipe_leak",
+    "cable_insulation_damage",
+    "fastener_issue"
+  ]
+}
