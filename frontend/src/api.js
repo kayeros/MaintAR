@@ -198,11 +198,29 @@ export const maintenanceByComponent = (id) => request(`/api/Maintenance/componen
 export const myMaintenance = () => request('/api/Maintenance/my');
 export const deleteMaintenance = (id) => request(`/api/Maintenance/${id}`, { method: 'DELETE' });
 
+// Веб: image-picker игнорирует quality и отдаёт оригинал (бывает 10+ МБ, сервер такое отклоняет
+// и рвёт соединение — браузер видит «Failed to fetch»). Ужимаем через canvas до JPEG.
+async function webJpeg(uri, maxSide = 1600, quality = 0.8) {
+  const src = await (await fetch(uri)).blob();
+  try {
+    const bmp = await createImageBitmap(src);
+    const k = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bmp.width * k);
+    canvas.height = Math.round(bmp.height * k);
+    canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    const out = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', quality));
+    return out || src;
+  } catch (e) {
+    return src;
+  }
+}
+
 export async function createInspection(photo, value, method) {
   if (Platform.OS === 'web') {
     // веб: FormData понимает только Blob
     const form = new FormData();
-    const blob = await (await fetch(photo.uri)).blob();
+    const blob = await webJpeg(photo.uri);
     form.append('Photo', blob, 'photo.jpg');
     form.append('Value', value);
     form.append('IdentificationMethod', method);
@@ -216,7 +234,7 @@ export async function uploadEquipmentPhoto(id, photo) {
   const path = `/api/Equipment/${id}/photo`;
   if (Platform.OS === 'web') {
     const form = new FormData();
-    form.append('photo', await (await fetch(photo.uri)).blob(), 'photo.jpg');
+    form.append('photo', await webJpeg(photo.uri), 'photo.jpg');
     return request(path, { method: 'POST', form, timeout: 120000 });
   }
   return uploadNative(path, 'photo', photo, {});
@@ -235,7 +253,7 @@ export async function uploadAvatar(photo) {
   const path = '/api/Profile/avatar';
   if (Platform.OS === 'web') {
     const form = new FormData();
-    form.append('photo', await (await fetch(photo.uri)).blob(), 'avatar.jpg');
+    form.append('photo', await webJpeg(photo.uri, 800, 0.85), 'avatar.jpg');
     return request(path, { method: 'POST', form, timeout: 120000 });
   }
   return uploadNative(path, 'photo', photo, {});
