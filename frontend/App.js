@@ -9,6 +9,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors as C } from './src/theme';
 import * as api from './src/api';
@@ -932,6 +934,12 @@ async function exportHistory(seg) {
     const a = document.createElement('a');
     a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } else if (await Sharing.isAvailableAsync()) {
+    // Телефон: сохраняем .csv во временную папку и отдаём файлом в меню «Поделиться».
+    const file = new File(Paths.cache, name);
+    file.create({ overwrite: true });
+    file.write('﻿' + csv);
+    await Sharing.shareAsync(file.uri, { mimeType: 'text/csv', dialogTitle: 'Выгрузка MaintAR', UTI: 'public.comma-separated-values-text' });
   } else {
     await Share.share({ title: name, message: csv });
   }
